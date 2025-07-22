@@ -383,6 +383,8 @@ export function parseCategory(lines: string[], startIndex: number, isTableFormat
       }
       
       courses.push(selectionGroup);
+      // Reset selection context after finishing the group
+      isInSelectGroup = false;
       continue;
     }
     
@@ -921,12 +923,15 @@ function parseTableTitleAndCredits(titlePart: string): ParsedTitle {
 export function parseStandardCourse(line: string): Course | null {
   const isOrOption = line.startsWith('or ');
   const cleanLine = line.replace(/^or\s+/, '');
-  
+
+  // Remove leading list markers / bullets that can confuse the regex parser
+  const sanitizedLine = cleanLine.replace(/^[\u2022•\-\–]+\s*/, '').trim();
+
   console.log(`Parsing standard course: "${line}" (OR option: ${isOrOption})`);
-  console.log(`Clean line: "${cleanLine}"`);
+  console.log(`Sanitized line: "${sanitizedLine}"`);
   
   // CHECK FOR AND PATTERN FIRST - More flexible regex
-  const andPatternMatch = cleanLine.match(/^([A-Z]{2,4}\s+\d{4}[A-Z]?)\s*&\s*([A-Z]{2,4}\s+\d{4}[A-Z]?)\s*(.*)$/);
+  const andPatternMatch = sanitizedLine.match(/^([A-Z]{2,4}\s+\d{4}[A-Z]?)\s*&\s*([A-Z]{2,4}\s+\d{4}[A-Z]?)\s*(.*)$/);
   if (andPatternMatch) {
     const [, code1, code2, titlePart] = andPatternMatch;
     
@@ -964,7 +969,7 @@ export function parseStandardCourse(line: string): Course | null {
   }
   
   // Enhanced pattern to handle footnotes properly (existing logic)
-  const courseMatch = cleanLine.match(/^([A-Z]{2,4}\s+\d{4}[A-Z]?)\s+(.+)$/);
+  const courseMatch = sanitizedLine.match(/^([A-Z]{2,4}\s+\d{4}[A-Z]?)\s+(.+)$/);
   if (courseMatch) {
     const [, code, titlePart] = courseMatch;
     
@@ -992,7 +997,8 @@ export function parseStandardCourse(line: string): Course | null {
 
 export function parseComplexCourse(line: string): Course | null {
   // CHECK FOR AND PATTERN FIRST - FIXED REGEX (no space required)
-  const andPatternMatch = line.match(/^([A-Z]{2,4}\s+\d{4}[A-Z]?)\s*&\s*([A-Z]{2,4}\s+\d{4}[A-Z]?)(.+)$/);
+  const sanitizedLine = line.replace(/^[\u2022•\-\–]+\s*/, '').trim();
+  const andPatternMatch = sanitizedLine.match(/^([A-Z]{2,4}\s+\d{4}[A-Z]?)\s*&\s*([A-Z]{2,4}\s+\d{4}[A-Z]?)(.+)$/);
   if (andPatternMatch) {
     const [, code1, code2, titlePart] = andPatternMatch;
     const title = titlePart.trim();
@@ -1022,7 +1028,7 @@ export function parseComplexCourse(line: string): Course | null {
   }
   
   // Handle course code with title on same line - existing logic
-  const combinedMatch = line.match(/^([A-Z]{2,4}\s+\d{4}[A-Z]?(?:\s*&\s*[A-Z]{2,4}\s+\d{4}[A-Z]?)*)\s+(.+)$/);
+  const combinedMatch = sanitizedLine.match(/^([A-Z]{2,4}\s+\d{4}[A-Z]?(?:\s*&\s*[A-Z]{2,4}\s+\d{4}[A-Z]?)*?)\s+(.+)$/);
   if (combinedMatch) {
     const [, courseCode, titlePart] = combinedMatch;
     console.log(`  Complex course with title: "${courseCode}" + "${titlePart}"`);
@@ -1081,7 +1087,8 @@ export function parseCourseTitleAndCredits(titlePart: string): ParsedTitle {
 
 // ENHANCED: Category header detection with comprehensive patterns
 export function isCategoryHeader(line: string): boolean {
-  const clean = line.replace(/\*+/g, '').trim();
+  // Strip asterisks and leading bullet markers (•, -, etc.)
+  const clean = line.replace(/\*+/g, '').replace(/^[\u2022•\-\–]+\s*/, '').trim();
   
   console.log(`    Checking if category header: "${clean}"`);
   

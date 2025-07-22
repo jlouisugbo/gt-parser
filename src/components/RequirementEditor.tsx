@@ -441,6 +441,7 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
                 <FootnoteRefs 
                   footnoteRefs={groupCourse.footnoteRefs} 
                   courseRef={{ type: 'selectionGroupCourse', courseIndex, optionIndex, groupCourseIndex }} 
+                  requirementFootnotes={requirement.footnotes || []}
                 />
                 <Button onClick={() => removeSelectionOptionGroupCourse(courseIndex, optionIndex, groupCourseIndex)} variant="ghost" size="sm" className="h-6 w-6 p-0">
                   <Trash2 className="h-3 w-3" />
@@ -472,6 +473,7 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
           <FootnoteRefs 
             footnoteRefs={option.footnoteRefs} 
             courseRef={{ type: 'selectionOption', courseIndex, optionIndex }} 
+            requirementFootnotes={requirement.footnotes || []} 
           />
           <Button onClick={() => removeSelectionOption(courseIndex, optionIndex)} variant="ghost" size="sm" className="h-6 w-6 p-0">
             <Trash2 className="h-3 w-3" />
@@ -581,6 +583,7 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
                 groupIndex: nestedGroupIndex,
                 nestedCourseIndex: courseIndex 
               }} 
+              requirementFootnotes={requirement.footnotes || []}
             />
             <Button onClick={() => removeNestedGroupCourse(parentGroupIndex, nestedGroupIndex, courseIndex)} variant="ghost" size="sm" className="h-5 w-5 p-0">
               <Trash2 className="h-3 w-3" />
@@ -656,6 +659,7 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
                 <FootnoteRefs 
                   footnoteRefs={groupCourse.footnoteRefs} 
                   courseRef={{ type: 'groupCourse', courseIndex, groupIndex: groupCourseIndex }} 
+                  requirementFootnotes={requirement.footnotes || []} 
                 />
                 <Button onClick={() => removeGroupCourse(courseIndex, groupCourseIndex)} variant="ghost" size="sm" className="h-6 w-6 p-0">
                   <Trash2 className="h-3 w-3" />
@@ -739,6 +743,7 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
           <FootnoteRefs 
             footnoteRefs={course.footnoteRefs} 
             courseRef={{ type: 'course', courseIndex }} 
+            requirementFootnotes={requirement.footnotes || []} 
           />
           <CourseActions courseIndex={courseIndex} />
         </div>
