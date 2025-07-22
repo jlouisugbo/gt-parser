@@ -1,6 +1,6 @@
 // In your page.js
-import GTParserWithEditor from '../components/main';
+import GTParser from '../components/GTParser';
 
 export default function Page() {
-  return <GTParserWithEditor />;
+  return <GTParser />;
 }

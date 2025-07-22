@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
 
     console.log(`🔍 Processing: "${fullProgramName}" (${degree_type})`);
 
-    // Simple query by exact name match (new schema)
+    // Simple query by exact name match
     const { data: existingPrograms, error: findError } = await supabaseAdmin
       .from('degree_programs')
       .select('id, name, degree_type, total_credits')
@@ -49,6 +49,7 @@ export async function POST(request: NextRequest) {
         .from('degree_programs')
         .update({
           requirements: requirements || [],
+          footnotes: footnotes || [],  // ADD THIS - update footnotes column
           total_credits: total_credits || existingProgram.total_credits,
           updated_at: new Date().toISOString()
         })
@@ -81,25 +82,17 @@ export async function POST(request: NextRequest) {
           name: fullProgramName,
           degree_type,
           requirements: requirements || [],
+          footnotes: footnotes || [],  // ADD THIS - insert footnotes column
           total_credits: total_credits || 0,
           is_active: true,
           created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          footnotes: footnotes || [],  // ADD THIS - insert footnotes
+          updated_at: new Date().toISOString()
         })
         .select()
         .single();
 
       if (createError) {
         console.error('❌ Create error:', createError);
-        
-        if (createError.message.includes('unique constraint')) {
-          return NextResponse.json({
-            success: false,
-            error: `A program with this exact combination already exists. Try refreshing and updating instead of creating.`
-          }, { status: 409 });
-        }
-
         return NextResponse.json({
           success: false,
           error: `Failed to create program: ${createError.message}`
