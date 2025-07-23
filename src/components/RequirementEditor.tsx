@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useState } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -54,6 +54,51 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
   onRemove,
 }) => {
   const [showFootnotes, setShowFootnotes] = useState(false);
+
+  // Stable course input component to prevent focus loss
+  const CourseInput: React.FC<{
+    value: string;
+    placeholder: string;
+    courseIndex: number;
+    field: string;
+    className?: string;
+  }> = React.memo(({ value, placeholder, courseIndex, field, className }) => {
+    const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+      updateCourse(courseIndex, field, e.target.value);
+    }, [courseIndex, field]);
+
+    return (
+      <Input
+        value={value || ''}
+        onChange={handleChange}
+        placeholder={placeholder}
+        className={className}
+      />
+    );
+  });
+
+  // Stable group course input component
+  const GroupCourseInput: React.FC<{
+    value: string;
+    placeholder: string;
+    groupIndex: number;
+    courseIndex: number;
+    field: string;
+    className?: string;
+  }> = React.memo(({ value, placeholder, groupIndex, courseIndex, field, className }) => {
+    const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+      updateGroupCourse(groupIndex, courseIndex, field, e.target.value);
+    }, [groupIndex, courseIndex, field]);
+
+    return (
+      <Input
+        value={value || ''}
+        onChange={handleChange}
+        placeholder={placeholder}
+        className={className}
+      />
+    );
+  });
 
 
   const FootnoteRefs: React.FC<{ 
@@ -168,14 +213,14 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
     onUpdate('courses', updatedCourses);
   };
 
-  const updateCourse = (courseIndex: number, field: string, value: any) => {
+  const updateCourse = useCallback((courseIndex: number, field: string, value: any) => {
     const updatedCourses = [...requirement.courses];
     updatedCourses[courseIndex] = {
       ...updatedCourses[courseIndex],
       [field]: value
     };
     onUpdate('courses', updatedCourses);
-  };
+  }, [requirement.courses, onUpdate]);
 
   const removeCourse = (courseIndex: number) => {
     const updatedCourses = requirement.courses.filter((_, index) => index !== courseIndex);
@@ -250,11 +295,11 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
     onUpdate('courses', updatedCourses);
   };
 
-  const updateGroupCourse = (groupIndex: number, courseIndex: number, field: string, value: any) => {
+  const updateGroupCourse = useCallback((groupIndex: number, courseIndex: number, field: string, value: any) => {
     const updatedCourses = [...requirement.courses];
     (updatedCourses[groupIndex].groupCourses![courseIndex] as any)[field] = value;
     onUpdate('courses', updatedCourses);
-  };
+  }, [requirement.courses, onUpdate]);
 
   const removeGroupCourse = (groupIndex: number, courseIndex: number) => {
     const updatedCourses = [...requirement.courses];
@@ -597,8 +642,8 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
     </div>
   );
 
-  // Compact course card component
-  const CourseCard: React.FC<{ course: Course; courseIndex: number }> = ({ course, courseIndex }) => (
+  // Compact course card component - Memoized to prevent unnecessary re-renders
+  const CourseCard: React.FC<{ course: Course; courseIndex: number }> = React.memo(({ course, courseIndex }) => (
   <Card className={`p-0 bg-gray-200 relative transition-all duration-200 gap-1 ${
     course.courseType === 'or_group' ? 'border-orange-300 bg-orange-50' :
     course.courseType === 'and_group' ? 'border-green-300 bg-green-50' :
@@ -641,18 +686,22 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
                 <div className={`flex items-center gap-1 p-1 rounded border ${
                   course.courseType === 'or_group' ? 'bg-orange-25 border-orange-200' : 'bg-green-25 border-green-200'
                 }`}>
-                  <Input
+                  <GroupCourseInput
                     value={groupCourse.code}
-                    onChange={(e) => updateGroupCourse(courseIndex, groupCourseIndex, 'code', e.target.value)}
                     placeholder="CS 1371"
+                    groupIndex={courseIndex}
+                    courseIndex={groupCourseIndex}
+                    field="code"
                     className="h-6 text-xs w-40"
-                />
-                <Input
-                  value={groupCourse.title}
-                  onChange={(e) => updateGroupCourse(courseIndex, groupCourseIndex, 'title', e.target.value)}
-                  placeholder="Course title"
-                  className="h-6 text-xs flex-1"
-                />
+                  />
+                  <GroupCourseInput
+                    value={groupCourse.title}
+                    placeholder="Course title"
+                    groupIndex={courseIndex}
+                    courseIndex={groupCourseIndex}
+                    field="title"
+                    className="h-6 text-xs flex-1"
+                  />
                 <FootnoteRefs 
                   footnoteRefs={groupCourse.footnoteRefs} 
                   courseRef={{ type: 'groupCourse', courseIndex, groupIndex: groupCourseIndex }} 
@@ -709,18 +758,20 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
           </div>
         </>
       ) : (
-        // Regular Course - SUPER COMPACT
+        // Regular Course - SUPER COMPACT with stable inputs
         <div className="flex items-center gap-1">
-          <Input
+          <CourseInput
             value={course.code || ''}
-            onChange={(e) => updateCourse(courseIndex, 'code', e.target.value)}
             placeholder="CS 1371"
+            courseIndex={courseIndex}
+            field="code"
             className="h-6 text-xs w-40"
           />
-          <Input
+          <CourseInput
             value={course.title}
-            onChange={(e) => updateCourse(courseIndex, 'title', e.target.value)}
             placeholder="Course title"
+            courseIndex={courseIndex}
+            field="title"
             className="h-6 text-xs flex-1"
           />
           <Select
@@ -745,7 +796,11 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
       )}
     </CardContent>
   </Card>
-  );
+  ), (prevProps, nextProps) => {
+    // Custom comparison to prevent unnecessary re-renders
+    return prevProps.courseIndex === nextProps.courseIndex && 
+           JSON.stringify(prevProps.course) === JSON.stringify(nextProps.course);
+  });
 
   return (
     <Card className="border-l-4 border-l-blue-500">
@@ -840,19 +895,23 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
         
         {/* COURSES WITH INSERT BUTTONS - COMPACT */}
         <div className="space-y-1">
-          {requirement.courses?.map((course, courseIndex) => (
-            <div key={courseIndex}>
-              {/* Insert buttons above each course - SMALLER */}
-              {courseIndex === 0 && (
-                <InsertButtons position={0} />
-              )}
+          {requirement.courses?.map((course, courseIndex) => {
+            // Create stable key using course properties instead of just index
+            const stableKey = `course-${courseIndex}-${course.code || 'empty'}-${course.courseType}`;
+            return (
+              <div key={stableKey}>
+                {/* Insert buttons above each course - SMALLER */}
+                {courseIndex === 0 && (
+                  <InsertButtons position={0} />
+                )}
 
-              <CourseCard key={`course-${courseIndex}`} course={course} courseIndex={courseIndex} />
+                <CourseCard course={course} courseIndex={courseIndex} />
 
-              {/* Insert buttons below each course - SMALLER */}
-              <InsertButtons position={courseIndex + 1} />
-            </div>
-          ))}
+                {/* Insert buttons below each course - SMALLER */}
+                <InsertButtons position={courseIndex + 1} />
+              </div>
+            );
+          })}
           
           {/* If no courses, show insert buttons */}
           {(!requirement.courses || requirement.courses.length === 0) && (

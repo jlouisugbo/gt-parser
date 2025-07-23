@@ -343,7 +343,7 @@ export function parseCategory(lines: string[], startIndex: number, isTableFormat
       
       console.log(`  *** CREATING SELECTION GROUP: ${selectGroupCount} courses ***`);
       
-      // Parse selection options
+      // Parse selection options - FIXED TO HANDLE RAW FORMAT
       i++;
       while (i < lines.length) {
         const optionLine = lines[i].trim();
@@ -354,6 +354,24 @@ export function parseCategory(lines: string[], startIndex: number, isTableFormat
         }
         
         console.log(`    Selection option line: "${optionLine}"`);
+        
+        // ENHANCED: Handle tab-separated format like "MGT 3075\nSecurity Valuation\t"
+        // Check if this line is just a course code
+        const justCodeMatch = optionLine.match(/^([A-Z]{2,4}\s+\d{4}[A-Z]?)$/);
+        if (justCodeMatch && i + 1 < lines.length) {
+          const nextLine = lines[i + 1].trim();
+          // If next line has title, combine them
+          if (nextLine && !nextLine.match(/^[A-Z]{2,4}\s+\d{4}/) && !isCategoryHeader(nextLine)) {
+            const combinedLine = `${optionLine} ${nextLine}`;
+            const optionCourse = parseStandardCourse(combinedLine) || parseComplexCourse(combinedLine);
+            if (optionCourse) {
+              selectionGroup.selectionOptions!.push(optionCourse);
+              console.log(`    Added combined option: ${optionCourse.code} - ${optionCourse.title}`);
+              i += 2; // Skip both lines
+              continue;
+            }
+          }
+        }
         
         // Check for AND groups within selection (like "BIOS 1107 & 1107L")
         const andPatternResult = detectANDPattern(optionLine, lines, i);
@@ -616,31 +634,55 @@ function detectORPattern(line: string, lines: string[], currentIndex: number): P
   return result;
 }
 
-// NEW FUNCTION: Detect AND patterns like "BIOS 1603 & BIOS 1603L"
+// NEW FUNCTION: Detect AND patterns like "BIOS 1603 & BIOS 1603L" - Enhanced for tabs
 function detectANDPattern(line: string, lines: string[], currentIndex: number): ANDPatternResult {
   const result: ANDPatternResult = { isANDPattern: false, courses: [], nextIndex: currentIndex + 1 };
   
-  // Pattern 1: "CourseA & CourseB" on same line
-  const simpleANDMatch = line.match(/^([A-Z]{2,4}\s+\d{4}[A-Z]?(?:\s+[^&]+)?)\s+&\s+([A-Z]{2,4}\s+\d{4}[A-Z]?(?:\s+.+)?)$/);
+  // Enhanced line cleaning for tab handling
+  const cleanedLine = line.replace(/\t/g, ' ').replace(/\s+/g, ' ').trim();
+  
+  // Pattern 1: "CourseA & CourseB" on same line - Enhanced
+  const simpleANDMatch = cleanedLine.match(/^([A-Z]{2,4}\s+\d{4}[A-Z]?)\s*&\s*([A-Z]{2,4}\s+\d{4}[A-Z]?)\s*(.*)$/);
   if (simpleANDMatch) {
-    const [, course1Text, course2Text] = simpleANDMatch;
+    const [, code1, code2, titlePart] = simpleANDMatch;
+    
+    // Enhanced title cleanup 
+    const title = titlePart
+      .replace(/^\s*and\s+/i, '')             // Remove leading "and"
+      .replace(/\d+\s*$/, '')                 // Remove trailing numbers
+      .trim();
+    
     result.isANDPattern = true;
     result.courses = [
-      parseCourseFromText(course1Text),
-      parseCourseFromText(course2Text)
+      {
+        code: code1.trim(),
+        title: title || 'Course',
+        courseType: 'regular' as const,
+        footnoteRefs: []
+      },
+      {
+        code: code2.trim(),
+        title: title || 'Course',
+        courseType: 'regular' as const,
+        footnoteRefs: []
+      }
     ];
     return result;
   }
   
-  // Pattern 2: Multiple courses separated by &
-  const multiANDMatch = line.match(/^([A-Z]{2,4}\s+\d{4}[A-Z]?(?:\s*&\s*[A-Z]{2,4}\s+\d{4}[A-Z]?)+)(?:\s+(.+))?$/);
+  // Pattern 2: Multiple courses separated by & - Enhanced
+  const multiANDMatch = cleanedLine.match(/^([A-Z]{2,4}\s+\d{4}[A-Z]?(?:\s*&\s*[A-Z]{2,4}\s+\d{4}[A-Z]?)+)(?:\s+(.+))?$/);
   if (multiANDMatch) {
     const [, courseCodes, title] = multiANDMatch;
     const codes = courseCodes.split(/\s*&\s*/);
+    
+    // Enhanced title cleanup
+    const cleanTitle = title ? title.replace(/\d+\s*$/, '').trim() : '';
+    
     result.isANDPattern = true;
     result.courses = codes.map(code => ({
       code: code.trim(),
-      title: title || '',
+      title: cleanTitle || 'Course',
       courseType: 'regular' as const,
       footnoteRefs: []
     }));
@@ -925,36 +967,37 @@ export function parseStandardCourse(line: string): Course | null {
   console.log(`Parsing standard course: "${line}" (OR option: ${isOrOption})`);
   console.log(`Clean line: "${cleanLine}"`);
   
-  // CHECK FOR AND PATTERN FIRST - More flexible regex
+  // CHECK FOR AND PATTERN FIRST - Enhanced to handle tabs and complex formatting
   const andPatternMatch = cleanLine.match(/^([A-Z]{2,4}\s+\d{4}[A-Z]?)\s*&\s*([A-Z]{2,4}\s+\d{4}[A-Z]?)\s*(.*)$/);
   if (andPatternMatch) {
     const [, code1, code2, titlePart] = andPatternMatch;
     
-    // Clean up the title part (remove tabs, extra spaces, trailing numbers)
+    // Enhanced title cleanup - handle tabs and complex formatting
     const title = titlePart
-      .replace(/\t/g, ' ')           // Replace tabs with spaces
-      .replace(/\s+/g, ' ')          // Collapse multiple spaces
-      .replace(/\d+$/, '')           // Remove trailing numbers (credits)
+      .replace(/\t/g, ' ')                    // Replace tabs with spaces
+      .replace(/\s+/g, ' ')                   // Collapse multiple spaces
+      .replace(/^\s*and\s+/i, '')             // Remove leading "and"
+      .replace(/\d+\s*$/, '')                 // Remove trailing numbers (credits)
       .trim();
     
-    console.log(`  ✓ AND pattern detected: "${code1}" & "${code2}" - Title: "${title}"`);
+    console.log(`  ✓ Enhanced AND pattern detected: "${code1}" & "${code2}" - Title: "${title}"`);
     
     // Return as AND group immediately
     return {
       code: 'AND_GROUP',
-      title: title,
+      title: title || 'AND Group',
       courseType: 'and_group',
       groupId: `and_${Date.now()}`,
       groupCourses: [
         {
           code: code1.trim(),
-          title: title,
+          title: title || 'Course',
           courseType: 'regular',
           footnoteRefs: []
         },
         {
           code: code2.trim(), 
-          title: title,
+          title: title || 'Course',
           courseType: 'regular',
           footnoteRefs: []
         }
