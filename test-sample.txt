@@ -1,0 +1,21 @@
+Computer Science
+
+Major Requirements
+MATH 1551 & MATH 1552 Calculus Sequence
+BIOS 1107 & BIOS 1107L Introduction to Biology
+or CHEM 1310 & CHEM 1311L General Chemistry
+PHYS 2211 Introductory Physics I
+
+Select 2 of the following:
+CS 3510 Design and Analysis of Algorithms
+CS 3520 & CS 3521 Computational Complexity with Lab
+or CS 3530 Mathematical Foundations
+CS 3600 Introduction to Artificial Intelligence
+
+Core IMPACTS
+Select 1 of the following:
+ENGL 1101 English Composition I
+or ENGL 1102 English Composition II
+
+Free Electives
+Any CS 6

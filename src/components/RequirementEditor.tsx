@@ -1,12 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useState } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Trash2, ChevronUp, ChevronDown, BookOpen, X } from 'lucide-react';
+import { Plus, Trash2, ChevronUp, ChevronDown, BookOpen, X, ArrowRight, Move } from 'lucide-react';
 
 interface Footnote {
   number: number;
@@ -44,7 +44,10 @@ interface RequirementEditorProps {
   requirementName: string;
   onUpdate: (field: string, value: any) => void;
   onRemove: () => void;
-  onAddCategory?: (category: Requirement) => void; 
+  onAddCategory?: (category: Requirement) => void;
+  allRequirements?: Requirement[]; // For course movement between requirements
+  onMoveCourseBetweenRequirements?: (courseData: Course, fromReqIndex: number, toReqIndex: number, fromCourseIndex: number) => void;
+  requirementIndex?: number; // Current requirement index
 }
 
 export const RequirementEditor: React.FC<RequirementEditorProps> = ({ 
@@ -52,32 +55,160 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
   requirementName,
   onUpdate, 
   onRemove,
+  allRequirements = [],
+  onMoveCourseBetweenRequirements,
+  requirementIndex = 0,
 }) => {
   const [showFootnotes, setShowFootnotes] = useState(false);
 
 
-  const FootnoteRefs: React.FC<{ 
-  footnoteRefs: number[], 
-  courseRef: CourseRef,
-  requirementFootnotes?: Footnote[]  // ADD this prop
-}> = ({ footnoteRefs, courseRef, requirementFootnotes = [] }) => {  // ADD default empty array
-  
-  return (
-    <div className="flex items-center gap-1 w-30">
-      {requirementFootnotes.sort((a, b) => a.number - b.number).map((footnote) => (
-        <Button
-          key={footnote.number}
-          onClick={() => toggleFootnoteRef(courseRef, footnote.number)}
-          variant={footnoteRefs.includes(footnote.number) ? "default" : "outline"}
-          size="sm"
-          className="h-4 w-4 p-0 text-xs"
-        >
-          {footnote.number}
-        </Button>
-      ))}
-    </div>
-  );
-};
+  // Create a controlled input component that doesn't cause re-renders
+  const StableInput: React.FC<{
+    value: string | number;
+    onChange: (value: string) => void;
+    placeholder?: string;
+    className?: string;
+    type?: string;
+    min?: string;
+    max?: string;
+  }> = ({ value, onChange, placeholder, className, type, min, max }) => {
+    const [localValue, setLocalValue] = useState(String(value));
+    const inputRef = useRef<HTMLInputElement>(null);
+    
+    useEffect(() => {
+      setLocalValue(String(value));
+    }, [value]);
+    
+    const handleBlur = () => {
+      if (localValue !== String(value)) {
+        onChange(localValue);
+      }
+    };
+    
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter') {
+        e.currentTarget.blur();
+      }
+    };
+    
+    return (
+      <Input
+        ref={inputRef}
+        value={localValue}
+        onChange={(e) => setLocalValue(e.target.value)}
+        onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+        placeholder={placeholder}
+        className={className}
+        type={type}
+        min={min}
+        max={max}
+      />
+    );
+  };
+
+  // Create a controlled textarea component
+  const StableTextarea: React.FC<{
+    value: string;
+    onChange: (value: string) => void;
+    placeholder?: string;
+    className?: string;
+    rows?: number;
+  }> = ({ value, onChange, placeholder, className, rows }) => {
+    const [localValue, setLocalValue] = useState(value);
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+    
+    useEffect(() => {
+      setLocalValue(value);
+    }, [value]);
+    
+    const handleBlur = () => {
+      if (localValue !== value) {
+        onChange(localValue);
+      }
+    };
+    
+    return (
+      <Textarea
+        ref={textareaRef}
+        value={localValue}
+        onChange={(e) => setLocalValue(e.target.value)}
+        onBlur={handleBlur}
+        placeholder={placeholder}
+        className={className}
+        rows={rows}
+      />
+    );
+  };
+
+  // Footnote Input Component - for typing footnote references
+  const FootnoteInput: React.FC<{
+    footnoteRefs: number[];
+    courseRef: CourseRef;
+    className?: string;
+  }> = ({ footnoteRefs, courseRef, className = "w-40" }) => {
+    const footnoteString = footnoteRefs.join(', ');
+    
+    const handleFootnoteChange = (value: string) => {
+      // Parse comma-separated numbers
+      const refs = value
+        .split(',')
+        .map(s => parseInt(s.trim()))
+        .filter(n => n > 0 && n <= 9); // Only valid footnote numbers
+      
+      // Update the course's footnote references
+      const updatedCourses = [...requirement.courses];
+      
+      switch (courseRef.type) {
+        case 'course':
+          updatedCourses[courseRef.courseIndex].footnoteRefs = refs;
+          break;
+        case 'groupCourse':
+          if (updatedCourses[courseRef.courseIndex].groupCourses && courseRef.groupIndex !== undefined) {
+            updatedCourses[courseRef.courseIndex].groupCourses![courseRef.groupIndex!].footnoteRefs = refs;
+          }
+          break;
+        case 'selectionOption':
+          if (updatedCourses[courseRef.courseIndex].selectionOptions && courseRef.optionIndex !== undefined) {
+            updatedCourses[courseRef.courseIndex].selectionOptions![courseRef.optionIndex!].footnoteRefs = refs;
+          }
+          break;
+        case 'selectionGroupCourse':
+          if (updatedCourses[courseRef.courseIndex].selectionOptions && 
+              courseRef.optionIndex !== undefined && 
+              courseRef.groupCourseIndex !== undefined) {
+            const option = updatedCourses[courseRef.courseIndex].selectionOptions![courseRef.optionIndex!];
+            if (option.groupCourses) {
+              option.groupCourses[courseRef.groupCourseIndex!].footnoteRefs = refs;
+            }
+          }
+          break;
+        case 'nestedGroupCourse':
+          if (updatedCourses[courseRef.courseIndex].groupCourses &&
+              courseRef.groupIndex !== undefined &&
+              courseRef.nestedCourseIndex !== undefined) {
+            const parentGroup = updatedCourses[courseRef.courseIndex].groupCourses![courseRef.groupIndex!];
+            if (parentGroup.groupCourses) {
+              parentGroup.groupCourses[courseRef.nestedCourseIndex!].footnoteRefs = refs;
+            }
+          }
+          break;
+      }
+      
+      onUpdate('courses', updatedCourses);
+    };
+    
+    return (
+      <StableInput
+        value={footnoteString}
+        onChange={handleFootnoteChange}
+        placeholder="1, 2, 3"
+        className={`${className} h-6 text-xs text-center w-12`}
+      />
+    );
+  };
+
+  // FootnoteRefs component removed - replaced with FootnoteInput for better UX
 
   // Footnote management functions
   const addFootnote = () => {
@@ -168,14 +299,14 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
     onUpdate('courses', updatedCourses);
   };
 
-  const updateCourse = (courseIndex: number, field: string, value: any) => {
+  const updateCourse = useCallback((courseIndex: number, field: string, value: any) => {
     const updatedCourses = [...requirement.courses];
     updatedCourses[courseIndex] = {
       ...updatedCourses[courseIndex],
       [field]: value
     };
     onUpdate('courses', updatedCourses);
-  };
+  }, [requirement.courses, onUpdate]);
 
   const removeCourse = (courseIndex: number) => {
     const updatedCourses = requirement.courses.filter((_, index) => index !== courseIndex);
@@ -250,11 +381,11 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
     onUpdate('courses', updatedCourses);
   };
 
-  const updateGroupCourse = (groupIndex: number, courseIndex: number, field: string, value: any) => {
+  const updateGroupCourse = useCallback((groupIndex: number, courseIndex: number, field: string, value: any) => {
     const updatedCourses = [...requirement.courses];
     (updatedCourses[groupIndex].groupCourses![courseIndex] as any)[field] = value;
     onUpdate('courses', updatedCourses);
-  };
+  }, [requirement.courses, onUpdate]);
 
   const removeGroupCourse = (groupIndex: number, courseIndex: number) => {
     const updatedCourses = [...requirement.courses];
@@ -287,11 +418,11 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
     onUpdate('courses', updatedCourses);
   };
 
-  const updateSelectionOption = (courseIndex: number, optionIndex: number, field: string, value: any) => {
+  const updateSelectionOption = useCallback((courseIndex: number, optionIndex: number, field: string, value: any) => {
     const updatedCourses = [...requirement.courses];
     (updatedCourses[courseIndex].selectionOptions![optionIndex] as any)[field] = value;
     onUpdate('courses', updatedCourses);
-  };
+  }, [requirement.courses, onUpdate]);
 
   const removeSelectionOption = (courseIndex: number, optionIndex: number) => {
     const updatedCourses = [...requirement.courses];
@@ -312,11 +443,11 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
     onUpdate('courses', updatedCourses);
   };
 
-  const updateSelectionOptionGroupCourse = (courseIndex: number, optionIndex: number, groupCourseIndex: number, field: string, value: any) => {
+  const updateSelectionOptionGroupCourse = useCallback((courseIndex: number, optionIndex: number, groupCourseIndex: number, field: string, value: any) => {
     const updatedCourses = [...requirement.courses];
     (updatedCourses[courseIndex].selectionOptions![optionIndex].groupCourses![groupCourseIndex] as any)[field] = value;
     onUpdate('courses', updatedCourses);
-  };
+  }, [requirement.courses, onUpdate]);
 
   const removeSelectionOptionGroupCourse = (courseIndex: number, optionIndex: number, groupCourseIndex: number) => {
     const updatedCourses = [...requirement.courses];
@@ -377,6 +508,53 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
     onUpdate('courses', updatedCourses);
   };
 
+  // Course Movement Functions
+  const moveCourseBetweenRequirements = (courseIndex: number, targetRequirementIndex: number) => {
+    if (!onMoveCourseBetweenRequirements || targetRequirementIndex === requirementIndex) return;
+    
+    const courseToMove = requirement.courses[courseIndex];
+    onMoveCourseBetweenRequirements(courseToMove, requirementIndex, targetRequirementIndex, courseIndex);
+    
+    // Remove from current requirement
+    const updatedCourses = [...requirement.courses];
+    updatedCourses.splice(courseIndex, 1);
+    onUpdate('courses', updatedCourses);
+  };
+
+  const extractCourseFromGroup = (courseIndex: number, groupCourseIndex: number) => {
+    const updatedCourses = [...requirement.courses];
+    const groupCourse = updatedCourses[courseIndex].groupCourses![groupCourseIndex];
+    
+    // Remove from group
+    updatedCourses[courseIndex].groupCourses!.splice(groupCourseIndex, 1);
+    
+    // Add as regular course after the group
+    updatedCourses.splice(courseIndex + 1, 0, {
+      ...groupCourse,
+      courseType: 'regular'
+    });
+    
+    onUpdate('courses', updatedCourses);
+  };
+
+  const moveCourseToGroup = (sourceCourseIndex: number, targetGroupIndex: number) => {
+    const updatedCourses = [...requirement.courses];
+    const courseToMove = updatedCourses[sourceCourseIndex];
+    
+    // Add to target group
+    updatedCourses[targetGroupIndex].groupCourses = updatedCourses[targetGroupIndex].groupCourses || [];
+    updatedCourses[targetGroupIndex].groupCourses!.push({
+      ...courseToMove,
+      courseType: 'regular'
+    });
+    
+    // Remove original course (adjust index if necessary)
+    const removeIndex = sourceCourseIndex > targetGroupIndex ? sourceCourseIndex : sourceCourseIndex;
+    updatedCourses.splice(removeIndex, 1);
+    
+    onUpdate('courses', updatedCourses);
+  };
+
   // Insert buttons component
   const InsertButtons: React.FC<{ position: number }> = ({ position }) => (
     <div className="flex justify-center py-0.5">
@@ -398,7 +576,7 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
   );
 
   // Reusable action buttons
-  const CourseActions: React.FC<{ courseIndex: number }> = ({ courseIndex }) => (
+  const CourseActions: React.FC<{ courseIndex: number, showMoveOptions?: boolean }> = ({ courseIndex, showMoveOptions = true }) => (
     <div className="flex gap-1">
       <Button onClick={() => moveCourse(courseIndex, 'up')} disabled={courseIndex === 0} variant="ghost" size="sm" className="h-6 w-6 p-0">
         <ChevronUp className="h-3 w-3" />
@@ -406,6 +584,41 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
       <Button onClick={() => moveCourse(courseIndex, 'down')} disabled={courseIndex === requirement.courses.length - 1} variant="ghost" size="sm" className="h-6 w-6 p-0">
         <ChevronDown className="h-3 w-3" />
       </Button>
+      
+      {/* Movement options dropdown */}
+      {showMoveOptions && allRequirements.length > 1 && (
+        <Select onValueChange={(value) => {
+          if (value.startsWith('req_')) {
+            const targetReqIndex = parseInt(value.replace('req_', ''));
+            moveCourseBetweenRequirements(courseIndex, targetReqIndex);
+          } else if (value.startsWith('group_')) {
+            const targetGroupIndex = parseInt(value.replace('group_', ''));
+            moveCourseToGroup(courseIndex, targetGroupIndex);
+          }
+        }}>
+          <SelectTrigger className="h-6 w-6 p-0">
+            <Move className="h-3 w-3" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none" disabled>Move to...</SelectItem>
+            {allRequirements.map((req, idx) => (
+              idx !== requirementIndex && (
+                <SelectItem key={idx} value={`req_${idx}`}>
+                  📁 {req.name}
+                </SelectItem>
+              )
+            ))}
+            {requirement.courses.map((course, idx) => (
+              course.courseType === 'or_group' || course.courseType === 'and_group' ? (
+                <SelectItem key={`group_${idx}`} value={`group_${idx}`}>
+                  🔗 {course.title}
+                </SelectItem>
+              ) : null
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+      
       <Button onClick={() => removeCourse(courseIndex)} variant="ghost" size="sm" className="h-6 w-6 p-0">
         <Trash2 className="h-3 w-3" />
       </Button>
@@ -416,32 +629,38 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
   const SelectionOptionCard: React.FC<{ option: Course; optionIndex: number; courseIndex: number }> = ({ option, optionIndex, courseIndex }) => {
     if (option.courseType === 'and_group') {
       return (
-        <div className="p-2 rounded border border-green-200 bg-green-25">
-          <div className="flex items-center justify-between mb-1">
-            <Badge className="bg-green-500 text-white text-xs">AND Group</Badge>
-            <Button onClick={() => removeSelectionOption(courseIndex, optionIndex)} variant="ghost" size="sm" className="h-6 w-6 p-0">
+        <div className="p-1 rounded border border-green-200 bg-green-25">
+          <div className="flex items-center justify-end mb-0.5">
+            <Button onClick={() => removeSelectionOption(courseIndex, optionIndex)} variant="ghost" size="sm" className="h-5 w-5 p-0">
               <Trash2 className="h-3 w-3" />
             </Button>
           </div>
-          <div className="space-y-1">
+          <div className="space-y-0.5">
             {option.groupCourses?.map((groupCourse, groupCourseIndex) => (
-              <div key={groupCourseIndex} className="flex items-center gap-1">
-                <Input
-                  value={groupCourse.code}
-                  onChange={(e) => updateSelectionOptionGroupCourse(courseIndex, optionIndex, groupCourseIndex, 'code', e.target.value)}
-                  placeholder="BIOS 1107"
-                  className="h-6 text-xs w-20"
+              <div key={groupCourseIndex} className="flex items-center gap-2">
+                {/* Left side: Code and Title (evenly sized) */}
+                <div className="flex gap-2 flex-1">
+                  <StableInput
+                    value={groupCourse.code}
+                    onChange={(value) => updateSelectionOptionGroupCourse(courseIndex, optionIndex, groupCourseIndex, 'code', value)}
+                    placeholder="BIOS 1107"
+                    className="h-6 text-xs flex-1"
+                  />
+                  <StableInput
+                    value={groupCourse.title}
+                    onChange={(value) => updateSelectionOptionGroupCourse(courseIndex, optionIndex, groupCourseIndex, 'title', value)}
+                    placeholder="Title"
+                    className="h-6 text-xs flex-1"
+                  />
+                </div>
+                
+                {/* Right side: Fixed-width controls */}
+                <FootnoteInput
+                  footnoteRefs={groupCourse.footnoteRefs}
+                  courseRef={{ type: 'selectionGroupCourse', courseIndex, optionIndex, groupCourseIndex }}
+                  className="w-40"
                 />
-                <Input
-                  value={groupCourse.title}
-                  onChange={(e) => updateSelectionOptionGroupCourse(courseIndex, optionIndex, groupCourseIndex, 'title', e.target.value)}
-                  placeholder="Title"
-                  className="h-6 text-xs flex-1"
-                />
-                <FootnoteRefs 
-                  footnoteRefs={groupCourse.footnoteRefs} 
-                  courseRef={{ type: 'selectionGroupCourse', courseIndex, optionIndex, groupCourseIndex }} 
-                />
+                
                 <Button onClick={() => removeSelectionOptionGroupCourse(courseIndex, optionIndex, groupCourseIndex)} variant="ghost" size="sm" className="h-6 w-6 p-0">
                   <Trash2 className="h-3 w-3" />
                 </Button>
@@ -456,23 +675,30 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
     } else {
       // Regular selection option
       return (
-        <div className="flex items-center gap-2 p-2 rounded border">
-          <Input
-            value={option.code}
-            onChange={(e) => updateSelectionOption(courseIndex, optionIndex, 'code', e.target.value)}
-            placeholder="EAS 2600"
-            className="h-6 text-xs w-20"
+        <div className="flex items-center gap-2 p-1 rounded border">
+          {/* Left side: Code and Title (evenly sized) */}
+          <div className="flex gap-2 flex-1">
+            <StableInput
+              value={option.code}
+              onChange={(value) => updateSelectionOption(courseIndex, optionIndex, 'code', value)}
+              placeholder="EAS 2600"
+              className="h-6 text-xs flex-1"
+            />
+            <StableInput
+              value={option.title}
+              onChange={(value) => updateSelectionOption(courseIndex, optionIndex, 'title', value)}
+              placeholder="Course title"
+              className="h-6 text-xs flex-1"
+            />
+          </div>
+          
+          {/* Right side: Fixed-width controls */}
+          <FootnoteInput
+            footnoteRefs={option.footnoteRefs}
+            courseRef={{ type: 'selectionOption', courseIndex, optionIndex }}
+            className="w-40"
           />
-          <Input
-            value={option.title}
-            onChange={(e) => updateSelectionOption(courseIndex, optionIndex, 'title', e.target.value)}
-            placeholder="Course title"
-            className="h-6 text-xs flex-1"
-          />
-          <FootnoteRefs 
-            footnoteRefs={option.footnoteRefs} 
-            courseRef={{ type: 'selectionOption', courseIndex, optionIndex }} 
-          />
+          
           <Button onClick={() => removeSelectionOption(courseIndex, optionIndex)} variant="ghost" size="sm" className="h-6 w-6 p-0">
             <Trash2 className="h-3 w-3" />
           </Button>
@@ -544,44 +770,46 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
     parentGroupIndex: number; 
     nestedGroupIndex: number; 
   }> = ({ nestedGroup, parentGroupIndex, nestedGroupIndex }) => (
-    <div className={`p-2 rounded border-2 border-dashed ${
+    <div className={`p-1 rounded border border-dashed ${
       nestedGroup.courseType === 'or_group' ? 'border-orange-400 bg-orange-100' : 'border-green-400 bg-green-100'
     }`}>
-      <div className="flex items-center justify-between mb-1">
-        <Badge className={`text-xs ${
-          nestedGroup.courseType === 'or_group' ? 'bg-orange-600 text-white' : 'bg-green-600 text-white'
-        }`}>
-          NESTED {nestedGroup.courseType === 'or_group' ? 'OR' : 'AND'}
-        </Badge>
+      <div className="flex items-center justify-end mb-0.5">
         <Button onClick={() => removeNestedGroup(parentGroupIndex, nestedGroupIndex)} variant="ghost" size="sm" className="h-5 w-5 p-0">
           <Trash2 className="h-3 w-3" />
         </Button>
       </div>
       
-      <div className="space-y-1">
+      <div className="space-y-0.5">
         {nestedGroup.groupCourses?.map((course, courseIndex) => (
-          <div key={courseIndex} className="flex items-center gap-1 p-1 rounded bg-white border">
-            <Input
-              value={course.code}
-              onChange={(e) => updateNestedGroupCourse(parentGroupIndex, nestedGroupIndex, courseIndex, 'code', e.target.value)}
-              placeholder="BIOS 1107"
-              className="h-5 text-xs w-40"
-            />
-            <Input
-              value={course.title}
-              onChange={(e) => updateNestedGroupCourse(parentGroupIndex, nestedGroupIndex, courseIndex, 'title', e.target.value)}
-              placeholder="Course title"
-              className="h-5 text-xs flex-1"
-            />
-            <FootnoteRefs 
-              footnoteRefs={course.footnoteRefs} 
+          <div key={courseIndex} className="flex items-center gap-2 p-1 rounded bg-white border">
+            {/* Left side: Code and Title (evenly sized) */}
+            <div className="flex gap-2 flex-1">
+              <StableInput
+                value={course.code}
+                onChange={(value) => updateNestedGroupCourse(parentGroupIndex, nestedGroupIndex, courseIndex, 'code', value)}
+                placeholder="BIOS 1107"
+                className="h-5 text-xs flex-1"
+              />
+              <StableInput
+                value={course.title}
+                onChange={(value) => updateNestedGroupCourse(parentGroupIndex, nestedGroupIndex, courseIndex, 'title', value)}
+                placeholder="Course title"
+                className="h-5 text-xs flex-1"
+              />
+            </div>
+            
+            {/* Right side: Fixed-width controls */}
+            <FootnoteInput
+              footnoteRefs={course.footnoteRefs}
               courseRef={{ 
                 type: 'nestedGroupCourse', 
                 courseIndex: parentGroupIndex, 
                 groupIndex: nestedGroupIndex,
                 nestedCourseIndex: courseIndex 
-              }} 
+              }}
+              className="w-40"
             />
+            
             <Button onClick={() => removeNestedGroupCourse(parentGroupIndex, nestedGroupIndex, courseIndex)} variant="ghost" size="sm" className="h-5 w-5 p-0">
               <Trash2 className="h-3 w-3" />
             </Button>
@@ -606,29 +834,31 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
     'border-gray-200 bg-white'
   }`}>
     
-    <CardContent className="p-0 px-1">
+    <CardContent className="p-1">
       {course.courseType === 'or_group' || course.courseType === 'and_group' ? (
-        // Logic Group - SUPER COMPACT w/ nested groups
+        // Logic Group - COMPACT without header
         <>
-          <div className="flex items-center justify-between mb-1">
-            <Badge className={`text-xs px-2 py-0 ${
-              course.courseType === 'or_group' ? 'bg-orange-500 text-white' : 'bg-green-500 text-white'
-            }`}>
-              {course.courseType === 'or_group' ? 'OR' : 'AND'} GROUP
-            </Badge>
-            <div className="flex items-center gap-1">
-              <Input
+          <div className="flex items-center gap-2">
+            <div className="flex gap-2 flex-1">
+              <StableInput
                 value={course.title}
-                onChange={(e) => updateCourse(courseIndex, 'title', e.target.value)}
-                className="h-5 text-xs bg-transparent font-medium w-32"
+                onChange={(value) => updateCourse(courseIndex, 'title', value)}
+                className="h-5 text-xs bg-transparent font-medium flex-1"
                 placeholder="Group name"
               />
             </div>
+            
+            <FootnoteInput
+              footnoteRefs={course.footnoteRefs}
+              courseRef={{ type: 'course', courseIndex }}
+              className="w-12"
+            />
+            
             <CourseActions courseIndex={courseIndex} />
           </div>
           
           {/* Compact group courses */}
-          <div className="space-y-1">
+          <div className="space-y-0.5">
             {course.groupCourses?.map((groupCourse, groupCourseIndex) => (
               <div key={groupCourseIndex}> 
               {groupCourse.courseType === 'or_group' || groupCourse.courseType === 'and_group' ? (
@@ -638,28 +868,44 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
                   nestedGroupIndex={groupCourseIndex}
                 />
               ) : (
-                <div className={`flex items-center gap-1 p-1 rounded border ${
+                <div className={`flex items-center gap-2 p-0.5 rounded border ${
                   course.courseType === 'or_group' ? 'bg-orange-25 border-orange-200' : 'bg-green-25 border-green-200'
                 }`}>
-                  <Input
-                    value={groupCourse.code}
-                    onChange={(e) => updateGroupCourse(courseIndex, groupCourseIndex, 'code', e.target.value)}
-                    placeholder="CS 1371"
-                    className="h-6 text-xs w-40"
-                />
-                <Input
-                  value={groupCourse.title}
-                  onChange={(e) => updateGroupCourse(courseIndex, groupCourseIndex, 'title', e.target.value)}
-                  placeholder="Course title"
-                  className="h-6 text-xs flex-1"
-                />
-                <FootnoteRefs 
-                  footnoteRefs={groupCourse.footnoteRefs} 
-                  courseRef={{ type: 'groupCourse', courseIndex, groupIndex: groupCourseIndex }} 
-                />
-                <Button onClick={() => removeGroupCourse(courseIndex, groupCourseIndex)} variant="ghost" size="sm" className="h-6 w-6 p-0">
-                  <Trash2 className="h-3 w-3" />
-                </Button>
+                  {/* Left side: Code and Title (evenly sized) */}
+                  <div className="flex gap-2 flex-1">
+                    <StableInput
+                      value={groupCourse.code}
+                      onChange={(value) => updateGroupCourse(courseIndex, groupCourseIndex, 'code', value)}
+                      placeholder="CS 1371"
+                      className="h-6 text-xs flex-1"
+                    />
+                    <StableInput
+                      value={groupCourse.title}
+                      onChange={(value) => updateGroupCourse(courseIndex, groupCourseIndex, 'title', value)}
+                      placeholder="Course title"
+                      className="h-6 text-xs flex-1"
+                    />
+                  </div>
+                  
+                  {/* Right side: Fixed-width controls */}
+                  <FootnoteInput
+                    footnoteRefs={groupCourse.footnoteRefs}
+                    courseRef={{ type: 'groupCourse', courseIndex, groupIndex: groupCourseIndex }}
+                    className="w-40"
+                  />
+                  
+                  <Button 
+                    onClick={() => extractCourseFromGroup(courseIndex, groupCourseIndex)} 
+                    variant="ghost" 
+                    size="sm" 
+                    className="h-6 w-6 p-0"
+                    title="Extract from group"
+                  >
+                    <ArrowRight className="h-3 w-3" />
+                  </Button>
+                  <Button onClick={() => removeGroupCourse(courseIndex, groupCourseIndex)} variant="ghost" size="sm" className="h-6 w-6 p-0">
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
               </div>
             )}
           </div>
@@ -676,25 +922,33 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
           </div>
         </>
       ) : course.courseType === 'selection' ? (
-        // Selection Group - SUPER COMPACT
+        // Selection Group - COMPACT without header
         <>
-          <div className="flex items-center justify-between mb-1">
-            <Badge className="bg-purple-500 text-white text-xs px-2 py-0">SELECT</Badge>
-            <div className="flex items-center gap-1 text-xs">
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 text-xs flex-1">
               <span>Select</span>
-              <Input
+              <StableInput
                 type="number"
-                value={course.selectionCount || 1}
-                onChange={(e) => updateCourse(courseIndex, 'selectionCount', parseInt(e.target.value) || 1)}
-                className="h-5 w-8 text-center text-xs"
+                value={String(course.selectionCount || 1)}
+                onChange={(value) => updateCourse(courseIndex, 'selectionCount', parseInt(value) || 1)}
+                className="h-5 w-12 text-center text-xs font-medium"
+                min="1"
+                max="20"
               />
-              <span>of:</span>
+              <span>of the following:</span>
             </div>
+            
+            <FootnoteInput
+              footnoteRefs={course.footnoteRefs}
+              courseRef={{ type: 'course', courseIndex }}
+              className="w-12"
+            />
+            
             <CourseActions courseIndex={courseIndex} />
           </div>
           
           {/* Selection options - compact */}
-          <div className="space-y-1">
+          <div className="space-y-0.5">
             {course.selectionOptions?.map((option, optionIndex) => (
               <SelectionOptionCard key={optionIndex} option={option} optionIndex={optionIndex} courseIndex={courseIndex} />
             ))}
@@ -709,25 +963,30 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
           </div>
         </>
       ) : (
-        // Regular Course - SUPER COMPACT
-        <div className="flex items-center gap-1">
-          <Input
-            value={course.code || ''}
-            onChange={(e) => updateCourse(courseIndex, 'code', e.target.value)}
-            placeholder="CS 1371"
-            className="h-6 text-xs w-40"
-          />
-          <Input
-            value={course.title}
-            onChange={(e) => updateCourse(courseIndex, 'title', e.target.value)}
-            placeholder="Course title"
-            className="h-6 text-xs flex-1"
-          />
+        // Regular Course - IMPROVED LAYOUT
+        <div className="flex items-center gap-2">
+          {/* Left side: Code and Title (evenly sized) */}
+          <div className="flex gap-2 flex-1">
+            <StableInput
+              value={course.code || ''}
+              onChange={(value) => updateCourse(courseIndex, 'code', value)}
+              placeholder="CS 1371"
+              className="h-6 text-xs flex-1"
+            />
+            <StableInput
+              value={course.title}
+              onChange={(value) => updateCourse(courseIndex, 'title', value)}
+              placeholder="Course title"
+              className="h-6 text-xs flex-1"
+            />
+          </div>
+          
+          {/* Right side: Fixed-width controls */}
           <Select
             value={course.courseType || 'regular'}
             onValueChange={(value) => updateCourse(courseIndex, 'courseType', value)}
           >
-            <SelectTrigger className="h-6 w-16 text-xs">
+            <SelectTrigger className="h-6 w-25 text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -736,10 +995,13 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
               <SelectItem value="flexible">Flex</SelectItem>
             </SelectContent>
           </Select>
-          <FootnoteRefs 
-            footnoteRefs={course.footnoteRefs} 
-            courseRef={{ type: 'course', courseIndex }} 
+          
+          <FootnoteInput
+            footnoteRefs={course.footnoteRefs}
+            courseRef={{ type: 'course', courseIndex }}
+            className="w-40"
           />
+          
           <CourseActions courseIndex={courseIndex} />
         </div>
       )}
@@ -751,9 +1013,9 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
     <Card className="border-l-4 border-l-blue-500">
       <CardHeader className="pb-1">
         <div className="flex items-center gap-2">
-          <Input
+          <StableInput
             value={requirementName}
-            onChange={(e) => onUpdate('name', e.target.value)}
+            onChange={(value) => onUpdate('name', value)}
             placeholder="Requirement name"
             className="h-7 text-xs flex-1 font-medium"
           />
@@ -795,15 +1057,15 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
             <CardContent className="pt-0 space-y-2">
               {requirement.footnotes?.map((footnote, index) => (
                 <div key={index} className="flex items-start gap-2 p-2 bg-white rounded border">
-                  <Input
+                  <StableInput
                     value={footnote.number}
-                    onChange={(e) => updateFootnote(index, 'number', e.target.value)}
+                    onChange={(value) => updateFootnote(index, 'number', value)}
                     placeholder="1"
                     className="h-6 w-8 text-xs text-center"
                   />
-                  <Textarea
+                  <StableTextarea
                     value={footnote.text}
-                    onChange={(e) => updateFootnote(index, 'text', e.target.value)}
+                    onChange={(value) => updateFootnote(index, 'text', value)}
                     placeholder="Footnote text..."
                     className="text-xs min-h-[24px] flex-1"
                     rows={1}
@@ -839,7 +1101,7 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
         </div>
         
         {/* COURSES WITH INSERT BUTTONS - COMPACT */}
-        <div className="space-y-1">
+        <div className="space-y-0.5">
           {requirement.courses?.map((course, courseIndex) => (
             <div key={courseIndex}>
               {/* Insert buttons above each course - SMALLER */}

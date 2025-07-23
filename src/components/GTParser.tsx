@@ -54,11 +54,14 @@ const GTParser: React.FC = () => {
   const [catalogText, setCatalogText] = useState('');
   const [parsedData, setParsedData] = useState<ProgramData | null>(null);
   const [editedData, setEditedData] = useState<ProgramData | null>(null);
+  const [pendingVisualData, setPendingVisualData] = useState<ProgramData | null>(null);
+  const [pendingJsonData, setPendingJsonData] = useState<string>('');
   const [currentStep, setCurrentStep] = useState<
     'input' | 'parsed' | 'edit' | 'preview' | 'confirm'
   >('input');
   const [isEditing, setIsEditing] = useState(false);
   const [editMode, setEditMode] = useState<'json' | 'visual'>('json');
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [jsonError, setJsonError] = useState('');
   const [insertStatus, setInsertStatus] = useState<
     'updating' | 'success' | 'error' | null
@@ -116,6 +119,56 @@ const GTParser: React.FC = () => {
     try {
       // Use your actual parser here
       const result = parseProgram(catalogText);
+      
+      // 🔬 TEMPORARY DEBUG OUTPUT FOR NESTED AND/OR GROUPS
+      console.log('🔬 PARSER RESULT DEBUG:');
+      console.log('═'.repeat(50));
+      console.log(`Program: ${result.name}`);
+      console.log(`Requirements found: ${result.requirements.length}\n`);
+      
+      result.requirements.forEach((req, i) => {
+        console.log(`${i + 1}. "${req.name}" (${req.courses.length} courses)`);
+        req.courses.forEach((course, j) => {
+          if (course.courseType === 'selection') {
+            console.log(`   ${j + 1}. ${course.code} - ${course.title} (${course.selectionOptions?.length || 0} options, select ${course.selectionCount})`);
+            course.selectionOptions?.forEach((opt, k) => {
+              console.log(`      ${k + 1}. ${opt.code} - ${opt.title}`);
+            });
+          } else if (course.courseType === 'or_group') {
+            console.log(`   ${j + 1}. ${course.code} - ${course.title || 'OR Group'} (${course.groupCourses?.length || 0} options)`);
+            course.groupCourses?.forEach((opt, k) => {
+              if (opt.courseType === 'and_group') {
+                console.log(`      ${k + 1}. ${opt.code} - ${opt.title || 'AND Group'} (${opt.groupCourses?.length || 0} courses)`);
+                opt.groupCourses?.forEach((subOpt, l) => {
+                  console.log(`         ${l + 1}. ${subOpt.code} - ${subOpt.title}`);
+                });
+              } else {
+                console.log(`      ${k + 1}. ${opt.code} - ${opt.title}`);
+              }
+            });
+          } else if (course.courseType === 'and_group') {
+            console.log(`   ${j + 1}. ${course.code} - ${course.title || 'AND Group'} (${course.groupCourses?.length || 0} courses)`);
+            course.groupCourses?.forEach((opt, k) => {
+              console.log(`      ${k + 1}. ${opt.code} - ${opt.title}`);
+            });
+          } else {
+            console.log(`   ${j + 1}. ${course.code} - ${course.title || 'No title'} (${course.courseType})`);
+          }
+        });
+        console.log('');
+      });
+      
+      // Check for the specific issues
+      const securityValuationReq = result.requirements.find(req => 
+        req.name.toLowerCase().includes('security valuation')
+      );
+      
+      if (securityValuationReq) {
+        console.log('❌ ISSUE: "Security Valuation" found as separate requirement');
+      } else {
+        console.log('✅ GOOD: No separate "Security Valuation" requirement found');
+      }
+      
       const validation = validateParsedData(result);
 
       if (!validation.isValid) {
@@ -148,10 +201,11 @@ const GTParser: React.FC = () => {
   };
 
   const handleJsonChange = (value: string) => {
+    setPendingJsonData(value);
+    setHasUnsavedChanges(true);
+    
     try {
-      const parsed = JSON.parse(value) as ProgramData;
-      setEditedData(parsed);
-      setParsedData(parsed);
+      JSON.parse(value) as ProgramData;
       setJsonError('');
     } catch (error) {
       setJsonError(`Invalid JSON: ${(error as Error).message}`);
@@ -159,26 +213,30 @@ const GTParser: React.FC = () => {
   };
 
   const handleVisualChange = (data: ProgramData) => {
-    setEditedData(data);
-    setParsedData(data);
+    setPendingVisualData(data);
+    setHasUnsavedChanges(true);
     setJsonError('');
-
-    // Trigger re-render of JSON editor if it's active
-    if (editMode === 'json') {
-      // Force JSON textarea to update
-      const jsonTextarea = document.querySelector(
-        'textarea[placeholder="Edit the JSON data here..."]'
-      ) as HTMLTextAreaElement;
-      if (jsonTextarea) {
-        jsonTextarea.value = JSON.stringify(data, null, 2);
-      }
-    }
   };
 
   const handleSaveEdits = () => {
     try {
-      if (!editedData) return;
-      setParsedData(editedData);
+      let dataToSave: ProgramData | null = null;
+      
+      if (editMode === 'json' && pendingJsonData) {
+        dataToSave = JSON.parse(pendingJsonData) as ProgramData;
+      } else if (editMode === 'visual' && pendingVisualData) {
+        dataToSave = pendingVisualData;
+      } else if (editedData) {
+        dataToSave = editedData;
+      }
+      
+      if (!dataToSave) return;
+      
+      setEditedData(dataToSave);
+      setParsedData(dataToSave);
+      setHasUnsavedChanges(false);
+      setPendingVisualData(null);
+      setPendingJsonData('');
       setIsEditing(false);
       setCurrentStep('preview');
       setJsonError('');
@@ -325,18 +383,8 @@ const GTParser: React.FC = () => {
                       {course.courseType === 'or_group' ||
                       course.courseType === 'and_group' ? (
                         // Logic Group Display
-                        <div className='bg-gray-50 border rounded-lg p-3'>
-                          <div className='flex items-center gap-2 mb-2'>
-                            <Badge
-                              className={`text-xs ${
-                                course.courseType === 'or_group'
-                                  ? 'bg-orange-100 text-orange-800'
-                                  : 'bg-green-100 text-green-800'
-                              }`}
-                            >
-                              {course.courseType === 'or_group' ? 'OR' : 'AND'}{' '}
-                              Group
-                            </Badge>
+                        <div className='bg-gray-50 border rounded-lg p-2'>
+                          <div className='flex items-center gap-2 mb-1'>
                             <span className='text-sm font-medium'>
                               {course.title}
                             </span>
@@ -370,14 +418,10 @@ const GTParser: React.FC = () => {
                         </div>
                       ) : course.courseType === 'selection' ? (
                         // Selection Group Display
-                        <div className='bg-purple-50 border border-purple-200 rounded-lg p-3'>
-                          <div className='flex items-center gap-2 mb-2'>
-                            <Badge className='bg-purple-100 text-purple-800 text-xs'>
-                              SELECT {course.selectionCount || 1} of the
-                              following
-                            </Badge>
+                        <div className='bg-purple-50 border border-purple-200 rounded-lg p-2'>
+                          <div className='flex items-center gap-2 mb-1'>
                             <span className='text-sm font-medium'>
-                              {course.title}
+                              Select {course.selectionCount || 1} of the following: {course.title}
                             </span>
                           </div>
                           <div className='ml-4 space-y-1'>
@@ -429,18 +473,6 @@ const GTParser: React.FC = () => {
                             </span>
                             <span className='flex-1'>{course.title}</span>
                             <div className='flex gap-1'>
-                              {course.courseType &&
-                                course.courseType !== 'regular' && (
-                                  <Badge variant='outline' className='text-xs'>
-                                    {course.courseType === 'or_option'
-                                      ? 'OR'
-                                      : course.courseType === 'flexible'
-                                      ? 'FLEX'
-                                      : course.courseType === 'selection'
-                                      ? 'SELECT'
-                                      : (course.courseType as string).toUpperCase()}
-                                  </Badge>
-                                )}
                               {course.footnoteRefs &&
                                 course.footnoteRefs.length > 0 && (
                                   <Badge variant='outline' className='text-xs'>
@@ -750,17 +782,26 @@ const GTParser: React.FC = () => {
                 </Card>
               )}
 
+              {/* Save Status */}
+              {hasUnsavedChanges && (
+                <Alert className='border-orange-200 bg-orange-50'>
+                  <AlertTriangle className='h-4 w-4 text-orange-600' />
+                  <AlertDescription className='text-orange-800'>
+                    You have unsaved changes. Click &quot;Save Changes&quot; to apply them.
+                  </AlertDescription>
+                </Alert>
+              )}
+
               {/* Editor Content */}
               {editedData &&
                 (editMode === 'visual' ? (
                   <VisualFormEditor
-                    data={editedData}
+                    data={pendingVisualData || editedData}
                     onChange={(data) => handleVisualChange(data)}
                   />
                 ) : (
                   <Textarea
-                    key={`json-${Date.now()}`}
-                    value={JSON.stringify(editedData, null, 2)}
+                    value={pendingJsonData || JSON.stringify(editedData, null, 2)}
                     onChange={e => handleJsonChange(e.target.value)}
                     className='min-h-[500px] font-mono text-sm'
                     placeholder='Edit the JSON data here...'
@@ -770,14 +811,21 @@ const GTParser: React.FC = () => {
               <div className='flex gap-2'>
                 <Button
                   onClick={handleSaveEdits}
-                  disabled={!!jsonError}
-                  className='flex items-center gap-1 h-9 text-sm'
+                  disabled={!!jsonError || !hasUnsavedChanges}
+                  className={`flex items-center gap-1 h-9 text-sm ${
+                    hasUnsavedChanges ? 'bg-orange-600 hover:bg-orange-700' : ''
+                  }`}
                 >
                   <Save className='h-3 w-3' />
-                  Save Changes
+                  {hasUnsavedChanges ? 'Save Changes' : 'No Changes'}
                 </Button>
                 <Button
-                  onClick={() => setCurrentStep('parsed')}
+                  onClick={() => {
+                    setCurrentStep('parsed');
+                    setHasUnsavedChanges(false);
+                    setPendingVisualData(null);
+                    setPendingJsonData('');
+                  }}
                   variant='outline'
                   className='h-9 text-sm'
                 >

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,48 +33,76 @@ interface VisualFormEditorProps {
 export const VisualFormEditor: React.FC<VisualFormEditorProps> = ({ data, onChange }) => {
   const [formData, setFormData] = useState<ProgramData>(data);
 
-  const updateProgramInfo = (field: keyof ProgramData, value: string) => {
+  // Update formData when external data changes
+  useEffect(() => {
+    setFormData(data);
+  }, [data]);
+
+  // Debounced onChange to prevent excessive re-renders
+  const debouncedOnChange = useCallback(
+    (updatedData: ProgramData) => {
+      onChange(updatedData); // Remove debouncing for now to fix lint issues
+    },
+    [onChange]
+  );
+
+  const updateProgramInfo = useCallback((field: keyof ProgramData, value: string) => {
     const updated = { ...formData, [field]: value };
-  
     setFormData(updated);
-    onChange(updated);
-  };
+    debouncedOnChange(updated);
+  }, [formData, debouncedOnChange]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const updateRequirement = (reqIndex: number, field: string, value: any) => {
+  const updateRequirement = useCallback((reqIndex: number, field: string, value: any) => {
     const updated = { ...formData };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (updated.requirements[reqIndex] as any)[field] = value;
     
     setFormData(updated);
-    onChange(updated);
-  };
+    debouncedOnChange(updated);
+  }, [formData, debouncedOnChange]);
 
 
-  const addCategory = (newCategory: Requirement) => {
+  const addCategory = useCallback((newCategory: Requirement) => {
     const updated = { ...formData };
     updated.requirements.push(newCategory);
     setFormData(updated);
-    onChange(updated);
-  };
-  const addRequirement = () => {
+    debouncedOnChange(updated);
+  }, [formData, debouncedOnChange]);
+
+  // Course movement handler  
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleMoveCourseBetweenRequirements = useCallback((courseData: any, fromReqIndex: number, toReqIndex: number) => {
+    const updated = { ...formData };
+    
+    // Add course to target requirement
+    if (!updated.requirements[toReqIndex].courses) {
+      updated.requirements[toReqIndex].courses = [];
+    }
+    updated.requirements[toReqIndex].courses.push(courseData);
+    
+    setFormData(updated);
+    debouncedOnChange(updated);
+  }, [formData, debouncedOnChange]);
+  
+  const addRequirement = useCallback(() => {
     const updated = { ...formData };
     updated.requirements.push({
       name: "New Requirement",
       courses: []
     });
     setFormData(updated);
-    onChange(updated);
-  };
+    debouncedOnChange(updated);
+  }, [formData, debouncedOnChange]);
 
-  const removeRequirement = (index: number) => {
+  const removeRequirement = useCallback((index: number) => {
     const updated = { ...formData };
     updated.requirements.splice(index, 1);
     setFormData(updated);
-    onChange(updated);
-  };
+    debouncedOnChange(updated);
+  }, [formData, debouncedOnChange]);
 
-  const moveRequirement = (index: number, direction: 'up' | 'down') => {
+  const moveRequirement = useCallback((index: number, direction: 'up' | 'down') => {
     const updated = { ...formData };
     const newIndex = direction === 'up' ? index - 1 : index + 1;
     
@@ -82,9 +110,9 @@ export const VisualFormEditor: React.FC<VisualFormEditorProps> = ({ data, onChan
       const [movedItem] = updated.requirements.splice(index, 1);
       updated.requirements.splice(newIndex, 0, movedItem);
       setFormData(updated);
-      onChange(updated);
+      debouncedOnChange(updated);
     }
-  };
+  }, [formData, debouncedOnChange]);
 
   return (
   <div className="space-y-3 min-h-screen">
@@ -199,6 +227,9 @@ export const VisualFormEditor: React.FC<VisualFormEditorProps> = ({ data, onChan
               onUpdate={(field, value) => updateRequirement(index, field, value)}
               onRemove={() => removeRequirement(index)}
               onAddCategory={addCategory}
+              allRequirements={formData.requirements}
+              onMoveCourseBetweenRequirements={handleMoveCourseBetweenRequirements}
+              requirementIndex={index}
             />
           </div>
         ))}

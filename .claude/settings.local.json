@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run dev:*)",
+      "Bash(npm run lint)",
+      "Bash(npx tsc:*)",
+      "Bash(node:*)",
+      "Bash(rm:*)",
+      "Bash(npm run build:*)",
+      "Bash(node \"C:\\Users\\joeys\\OneDrive\\Desktop\\cs\\gt-parser\\debug-or-detection.mjs\")"
+    ],
+    "deny": []
+  }
+}
