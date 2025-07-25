@@ -21,7 +21,8 @@ import {
   Download,
   Code,
   Settings,
-  RefreshCw
+  RefreshCw,
+  Plus
 } from 'lucide-react';
 
 import {

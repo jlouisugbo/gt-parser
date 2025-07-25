@@ -154,7 +154,7 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
       const refs = value
         .split(',')
         .map(s => parseInt(s.trim()))
-        .filter(n => n > 0 && n <= 9); // Only valid footnote numbers
+        .filter(n => n > 0); // Only valid footnote numbers
       
       // Update the course's footnote references
       const updatedCourses = [...requirement.courses];
