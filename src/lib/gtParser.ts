@@ -635,13 +635,16 @@ export function parseCategory(lines: string[], startIndex: number, isTableFormat
     console.log(`  ✅ Line passed initial checks, proceeding with parsing`);
     
     // ENHANCED: Handle "Select X of the following:" patterns with comprehensive nesting support
-    const selectMatch = line.match(/^Select\s+(one|two|three|four|five|\d+)\s+(?:of\s+)?(?:the\s+following|electives?|courses?|options?)(?:[.:]|\s*$)/i);
+    // Updated regex to capture potential custom titles and be more flexible
+    const selectMatch = line.match(/^(.+?)?(?:^|\s+)Select\s+(one|two|three|four|five|\d+)\s+(?:of\s+)?(?:the\s+following|electives?|courses?|options?)(?:[.:]|\s*$)/i);
     if (selectMatch) {
-      const selectionCountText = selectMatch[1].toLowerCase();
+      const potentialTitle = selectMatch[1] ? selectMatch[1].trim() : '';
+      const selectionCountText = selectMatch[2].toLowerCase();
       const wordToNumber = { 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5 };
-      selectGroupCount = wordToNumber[selectionCountText as keyof typeof wordToNumber] || parseInt(selectMatch[1]);
+      selectGroupCount = wordToNumber[selectionCountText as keyof typeof wordToNumber] || parseInt(selectMatch[2]);
       
       console.log(`  🎯 *** CREATING ENHANCED SELECTION GROUP: ${selectGroupCount} courses ***`);
+      console.log(`  📝 Potential title captured: "${potentialTitle}"`);
       
       // 🔬 DEBUG: Show exactly what lines are available for parsing
       console.log(`  📋 Available lines for selection parsing (starting from line ${i + 1}):`);
@@ -651,15 +654,23 @@ export function parseCategory(lines: string[], startIndex: number, isTableFormat
       }
       
       // Create enhanced selection group with validation
+      // Use custom title if available, otherwise default to the selection pattern
+      const defaultTitle = `Select ${selectGroupCount} of the following`;
+      const groupTitle = potentialTitle && potentialTitle.length > 0 && !potentialTitle.toLowerCase().includes('select') 
+        ? potentialTitle 
+        : defaultTitle;
+        
       const selectionGroup: Course = {
         code: 'SELECT_GROUP',
-        title: `Select ${selectGroupCount} of the following`,
+        title: groupTitle,
         courseType: 'selection',
         groupId: `select_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         selectionCount: selectGroupCount,
         selectionOptions: [],
         footnoteRefs: []
       };
+      
+      console.log(`  🏷️ Final selection group title: "${groupTitle}"`);
       
       // Parse selection options with enhanced nesting support
       console.log(`  🚀 STARTING SELECTION GROUP PARSING - Looking for ${selectGroupCount} options`);
@@ -834,7 +845,7 @@ export function parseCategory(lines: string[], startIndex: number, isTableFormat
         console.log(`    ⚠️ Selection group has no options, treating as flexible requirement`);
         const flexibleCourse: Course = {
           code: 'FLEXIBLE',
-          title: `Select ${selectGroupCount} of the following`,
+          title: groupTitle, // Use the same title logic as the selection group
           courseType: 'flexible' as const,
           footnoteRefs: [],
           isFlexible: true

@@ -394,7 +394,7 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
   };
 
   // Selection option management functions
-  const addSelectionOption = (courseIndex: number, optionType: 'regular' | 'and_group') => {
+  const addSelectionOption = (courseIndex: number, optionType: 'regular' | 'and_group' | 'or_group') => {
     const updatedCourses = [...requirement.courses];
     updatedCourses[courseIndex].selectionOptions = updatedCourses[courseIndex].selectionOptions || [];
     
@@ -410,6 +410,14 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
         code: "AND_GROUP",
         title: "AND Group",
         courseType: "and_group",
+        groupCourses: [],
+        footnoteRefs: []
+      });
+    } else if (optionType === 'or_group') {
+      updatedCourses[courseIndex].selectionOptions!.push({
+        code: "OR_GROUP",
+        title: "OR Group",
+        courseType: "or_group",
         groupCourses: [],
         footnoteRefs: []
       });
@@ -627,10 +635,18 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
 
   // Selection option component
   const SelectionOptionCard: React.FC<{ option: Course; optionIndex: number; courseIndex: number }> = ({ option, optionIndex, courseIndex }) => {
-    if (option.courseType === 'and_group') {
+    if (option.courseType === 'and_group' || option.courseType === 'or_group') {
       return (
-        <div className="p-1 rounded border border-green-200 bg-green-25">
-          <div className="flex items-center justify-end mb-0.5">
+        <div className={`p-1 rounded border ${
+          option.courseType === 'and_group' ? 'border-green-200 bg-green-25' : 'border-orange-200 bg-orange-25'
+        }`}>
+          <div className="flex items-center justify-between mb-0.5">
+            <StableInput
+              value={option.title}
+              onChange={(value) => updateSelectionOption(courseIndex, optionIndex, 'title', value)}
+              placeholder={option.courseType === 'and_group' ? "AND Group Title" : "OR Group Title"}
+              className="h-5 text-xs bg-transparent font-medium flex-1 mr-2"
+            />
             <Button onClick={() => removeSelectionOption(courseIndex, optionIndex)} variant="ghost" size="sm" className="h-5 w-5 p-0">
               <Trash2 className="h-3 w-3" />
             </Button>
@@ -924,6 +940,23 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
       ) : course.courseType === 'selection' ? (
         // Selection Group - COMPACT without header
         <>
+          <div className="flex items-center gap-2 mb-1">
+            <StableInput
+              value={course.title}
+              onChange={(value) => updateCourse(courseIndex, 'title', value)}
+              className="h-5 text-xs bg-transparent font-medium flex-1"
+              placeholder="Selection Group Title"
+            />
+            
+            <FootnoteInput
+              footnoteRefs={course.footnoteRefs}
+              courseRef={{ type: 'course', courseIndex }}
+              className="w-12"
+            />
+            
+            <CourseActions courseIndex={courseIndex} />
+          </div>
+          
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1 text-xs flex-1">
               <span>Select</span>
@@ -937,14 +970,6 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
               />
               <span>of the following:</span>
             </div>
-            
-            <FootnoteInput
-              footnoteRefs={course.footnoteRefs}
-              courseRef={{ type: 'course', courseIndex }}
-              className="w-12"
-            />
-            
-            <CourseActions courseIndex={courseIndex} />
           </div>
           
           {/* Selection options - compact */}
@@ -958,6 +983,9 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
               </Button>
               <Button onClick={() => addSelectionOption(courseIndex, 'and_group')} size="sm" variant="outline" className="flex-1 h-6 text-xs">
                 AND Group
+              </Button>
+              <Button onClick={() => addSelectionOption(courseIndex, 'or_group')} size="sm" variant="outline" className="flex-1 h-6 text-xs">
+                OR Group
               </Button>
             </div>
           </div>
