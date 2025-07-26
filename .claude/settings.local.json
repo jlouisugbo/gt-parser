@@ -7,7 +7,9 @@
       "Bash(node:*)",
       "Bash(rm:*)",
       "Bash(npm run build:*)",
-      "Bash(node \"C:\\Users\\joeys\\OneDrive\\Desktop\\cs\\gt-parser\\debug-or-detection.mjs\")"
+      "Bash(node \"C:\\Users\\joeys\\OneDrive\\Desktop\\cs\\gt-parser\\debug-or-detection.mjs\")",
+      "Bash(del test_hour_selection.js)",
+      "Bash(del test_comprehensive_hour_selection.js)"
     ],
     "deny": []
   }

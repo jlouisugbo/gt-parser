@@ -30,7 +30,10 @@ interface Course {
   groupId?: string;
   groupCourses?: Course[];
   selectionCount?: number;
+  selectionHours?: number;
+  selectionType?: 'courses' | 'hours';
   selectionOptions?: Course[];
+  creditHours?: number;
 }
 
 export interface Requirement {
@@ -361,6 +364,7 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
       courseType: "selection",
       groupId: groupId,
       selectionCount: 1,
+      selectionType: 'courses',
       selectionOptions: [],
       footnoteRefs: []
     });
@@ -509,6 +513,7 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
       courseType: "selection",
       groupId: groupId,
       selectionCount: 1,
+      selectionType: 'courses',
       selectionOptions: [],
       footnoteRefs: []
     });
@@ -705,6 +710,15 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
               onChange={(value) => updateSelectionOption(courseIndex, optionIndex, 'title', value)}
               placeholder="Course title"
               className="h-6 text-xs flex-1"
+            />
+            <StableInput
+              type="number"
+              value={String(option.creditHours || '')}
+              onChange={(value) => updateSelectionOption(courseIndex, optionIndex, 'creditHours', value ? parseInt(value) : undefined)}
+              placeholder="Hrs"
+              className="h-6 text-xs w-12 text-center"
+              min="0"
+              max="9"
             />
           </div>
           
@@ -962,13 +976,40 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
               <span>Select</span>
               <StableInput
                 type="number"
-                value={String(course.selectionCount || 1)}
-                onChange={(value) => updateCourse(courseIndex, 'selectionCount', parseInt(value) || 1)}
+                value={String(course.selectionType === 'hours' ? (course.selectionHours || 1) : (course.selectionCount || 1))}
+                onChange={(value) => {
+                  const numValue = parseInt(value) || 1;
+                  if (course.selectionType === 'hours') {
+                    updateCourse(courseIndex, 'selectionHours', numValue);
+                  } else {
+                    updateCourse(courseIndex, 'selectionCount', numValue);
+                  }
+                }}
                 className="h-5 w-12 text-center text-xs font-medium"
                 min="1"
-                max="20"
+                max="100"
               />
-              <span>of the following:</span>
+              <Select
+                value={course.selectionType || 'courses'}
+                onValueChange={(value: 'courses' | 'hours') => {
+                  updateCourse(courseIndex, 'selectionType', value);
+                  // Initialize the appropriate value if switching types
+                  if (value === 'hours' && !course.selectionHours) {
+                    updateCourse(courseIndex, 'selectionHours', course.selectionCount || 1);
+                  } else if (value === 'courses' && !course.selectionCount) {
+                    updateCourse(courseIndex, 'selectionCount', course.selectionHours || 1);
+                  }
+                }}
+              >
+                <SelectTrigger className="h-5 w-16 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="courses">courses</SelectItem>
+                  <SelectItem value="hours">hours</SelectItem>
+                </SelectContent>
+              </Select>
+              <span>{course.selectionType === 'hours' ? 'from the following:' : 'of the following:'}</span>
             </div>
           </div>
           
@@ -1006,6 +1047,15 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
               onChange={(value) => updateCourse(courseIndex, 'title', value)}
               placeholder="Course title"
               className="h-6 text-xs flex-1"
+            />
+            <StableInput
+              type="number"
+              value={String(course.creditHours || '')}
+              onChange={(value) => updateCourse(courseIndex, 'creditHours', value ? parseInt(value) : undefined)}
+              placeholder="Hrs"
+              className="h-6 text-xs w-12 text-center"
+              min="0"
+              max="9"
             />
           </div>
           

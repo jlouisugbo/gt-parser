@@ -8,7 +8,10 @@ export interface Course {
   groupId?: string;
   groupCourses?: Course[];
   selectionCount?: number;
+  selectionHours?: number;
+  selectionType?: 'courses' | 'hours';
   selectionOptions?: Course[];
+  creditHours?: number;
   isOption?: boolean;
   isFlexible?: boolean;
   isSelection?: boolean;
@@ -635,13 +638,76 @@ export function parseCategory(lines: string[], startIndex: number, isTableFormat
     console.log(`  ✅ Line passed initial checks, proceeding with parsing`);
     
     // ENHANCED: Handle "Select X of the following:" patterns with comprehensive nesting support
-    // Updated regex to capture potential custom titles and be more flexible
+    // Multiple regex patterns for robust hour-based selection detection
     const selectMatch = line.match(/^(.+?)?(?:^|\s+)Select\s+(one|two|three|four|five|\d+)\s+(?:of\s+)?(?:the\s+following|electives?|courses?|options?)(?:[.:]|\s*$)/i);
-    if (selectMatch) {
-      const potentialTitle = selectMatch[1] ? selectMatch[1].trim() : '';
-      const selectionCountText = selectMatch[2].toLowerCase();
-      const wordToNumber = { 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5 };
-      selectGroupCount = wordToNumber[selectionCountText as keyof typeof wordToNumber] || parseInt(selectMatch[2]);
+    
+    // Triple validation for hour-based selections - try multiple patterns
+    let hourSelectMatch = null;
+    const hourPatterns = [
+      // Pattern 1: Full anchored pattern
+      /^(.+?)?(?:^|\s+)Select\s+(\d+)\s+(hours?|credits?)\s+(?:from|of)\s+(?:the\s+following|electives?|courses?)(?:[.:]|\s*$)/i,
+      // Pattern 2: Simplified without complex anchoring
+      /Select\s+(\d+)\s+(hours?|credits?)\s+(?:from|of)\s+(?:the\s+following|electives?|courses?)/i,
+      // Pattern 3: Most flexible - just detect "Select X hours"
+      /Select\s+(\d+)\s+(hours?|credits?)/i
+    ];
+    
+    // Try each pattern until one matches
+    for (let i = 0; i < hourPatterns.length; i++) {
+      const match = line.match(hourPatterns[i]);
+      if (match) {
+        hourSelectMatch = match;
+        console.log(`  🎯 Hour selection detected with pattern ${i + 1}: "${line}"`);
+        break;
+      }
+    }
+    
+    // Additional validation: check if line contains hour-related keywords
+    const hasHourKeywords = /\b(hours?|credits?|hrs?)\b/i.test(line);
+    const hasSelectKeyword = /\bselect\b/i.test(line);
+    const hasFollowingKeyword = /\b(following|electives?|courses?)\b/i.test(line);
+    
+    if (hasHourKeywords && hasSelectKeyword && hasFollowingKeyword && !hourSelectMatch) {
+      console.log(`  ⚠️ Potential hour selection missed: "${line}" - manual fallback parsing`);
+      // Fallback: extract numbers and hour keywords manually
+      const numberMatch = line.match(/(\d+)/);
+      const hourMatch = line.match(/\b(hours?|credits?)\b/i);
+      if (numberMatch && hourMatch) {
+        hourSelectMatch = [line, '', numberMatch[1], hourMatch[1]];
+        console.log(`  ✅ Fallback hour selection parsing successful: ${numberMatch[1]} ${hourMatch[1]}`);
+      }
+    }
+    
+    if (selectMatch || hourSelectMatch) {
+      let potentialTitle = '';
+      let selectionType: 'courses' | 'hours' = 'courses';
+      let selectionValue = 1;
+      
+      if (hourSelectMatch) {
+        // Handle different regex capture group patterns
+        if (hourSelectMatch.length >= 4) {
+          // Full pattern match with title capture
+          potentialTitle = hourSelectMatch[1] ? hourSelectMatch[1].trim() : '';
+          selectionValue = parseInt(hourSelectMatch[2]);
+        } else if (hourSelectMatch.length >= 3) {
+          // Simplified pattern match without title
+          potentialTitle = '';
+          selectionValue = parseInt(hourSelectMatch[1]);
+        }
+        selectionType = 'hours';
+        console.log(`  🎯 *** CREATING ENHANCED HOUR-BASED SELECTION GROUP: ${selectionValue} hours ***`);
+        console.log(`  📝 Extracted title: "${potentialTitle}"`);
+        console.log(`  🔍 Match details:`, hourSelectMatch);
+      } else if (selectMatch) {
+        potentialTitle = selectMatch[1] ? selectMatch[1].trim() : '';
+        const selectionCountText = selectMatch[2].toLowerCase();
+        const wordToNumber = { 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5 };
+        selectionValue = wordToNumber[selectionCountText as keyof typeof wordToNumber] || parseInt(selectMatch[2]);
+        selectionType = 'courses';
+        console.log(`  🎯 *** CREATING ENHANCED COURSE-BASED SELECTION GROUP: ${selectionValue} courses ***`);
+      }
+      
+      selectGroupCount = selectionValue;
       
       console.log(`  🎯 *** CREATING ENHANCED SELECTION GROUP: ${selectGroupCount} courses ***`);
       console.log(`  📝 Potential title captured: "${potentialTitle}"`);
@@ -655,7 +721,9 @@ export function parseCategory(lines: string[], startIndex: number, isTableFormat
       
       // Create enhanced selection group with validation
       // Use custom title if available, otherwise default to the selection pattern
-      const defaultTitle = `Select ${selectGroupCount} of the following`;
+      const defaultTitle = selectionType === 'hours' 
+        ? `Select ${selectGroupCount} hours from the following`
+        : `Select ${selectGroupCount} of the following`;
       const groupTitle = potentialTitle && potentialTitle.length > 0 && !potentialTitle.toLowerCase().includes('select') 
         ? potentialTitle 
         : defaultTitle;
@@ -665,7 +733,9 @@ export function parseCategory(lines: string[], startIndex: number, isTableFormat
         title: groupTitle,
         courseType: 'selection',
         groupId: `select_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        selectionCount: selectGroupCount,
+        selectionCount: selectionType === 'courses' ? selectGroupCount : undefined,
+        selectionHours: selectionType === 'hours' ? selectGroupCount : undefined,
+        selectionType: selectionType,
         selectionOptions: [],
         footnoteRefs: []
       };
@@ -1634,21 +1704,55 @@ function convertFlexibleSelectionsToGroups(requirements: Requirement[], original
     while (i < requirement.courses.length) {
       const course = requirement.courses[i];
       
-      // Check if this is a FLEXIBLE course with a selection title
+      // Check if this is a FLEXIBLE course with a selection title (courses or hours)
       const isFlexibleSelection = course.courseType === 'flexible' && 
                                  course.title && 
-                                 course.title.match(/^Select\s+(\d+|one|two|three|four|five)\s+(?:of\s+)?(?:the\s+following|electives?|courses?|options?)/i);
+                                 (course.title.match(/^Select\s+(\d+|one|two|three|four|five)\s+(?:of\s+)?(?:the\s+following|electives?|courses?|options?)/i) ||
+                                  course.title.match(/Select\s+(\d+)\s+(hours?|credits?)/i));
       
       if (isFlexibleSelection) {
         console.log(`  🎯 Found FLEXIBLE selection course: "${course.title}"`);
         
-        // Extract the selection count
+        // ENHANCED: Extract the selection count or hours with triple validation
         const selectMatch = course.title!.match(/^Select\s+(one|two|three|four|five|\d+)\s+/i);
-        const selectionCountText = selectMatch?.[1].toLowerCase() || '1';
-        const wordToNumber = { 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5 };
-        const selectionCount = wordToNumber[selectionCountText as keyof typeof wordToNumber] || parseInt(selectionCountText) || 1;
         
-        console.log(`    📊 Selection count: ${selectionCount}`);
+        // Triple validation for hour-based selections in table format
+        let hourSelectMatch = null;
+        const hourPatterns = [
+          // Pattern 1: Full pattern
+          /^Select\s+(\d+)\s+(hours?|credits?)\s+(?:from|of)\s+(?:the\s+following|electives?|courses?)/i,
+          // Pattern 2: Simplified
+          /Select\s+(\d+)\s+(hours?|credits?)/i,
+          // Pattern 3: Very flexible
+          /(\d+)\s+(hours?|credits?)/i
+        ];
+        
+        // Try each pattern
+        for (let i = 0; i < hourPatterns.length; i++) {
+          const match = course.title!.match(hourPatterns[i]);
+          if (match) {
+            hourSelectMatch = match;
+            console.log(`    🎯 Table format hour selection detected with pattern ${i + 1}: "${course.title}"`);
+            break;
+          }
+        }
+        
+        let selectionValue = 1;
+        let selectionType: 'courses' | 'hours' = 'courses';
+        
+        if (hourSelectMatch) {
+          selectionValue = parseInt(hourSelectMatch[1]);
+          selectionType = 'hours';
+          console.log(`    ✅ Table format hour-based selection: ${selectionValue} hours`);
+        } else if (selectMatch) {
+          const selectionCountText = selectMatch[1].toLowerCase();
+          const wordToNumber = { 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5 };
+          selectionValue = wordToNumber[selectionCountText as keyof typeof wordToNumber] || parseInt(selectMatch[1]) || 1;
+          selectionType = 'courses';
+          console.log(`    ✅ Table format course-based selection: ${selectionValue} courses`);
+        }
+        
+        console.log(`    📊 Selection ${selectionType}: ${selectionValue}`);
         
         // Create the selection group
         const selectionGroup: Course = {
@@ -1656,7 +1760,9 @@ function convertFlexibleSelectionsToGroups(requirements: Requirement[], original
           title: course.title,
           courseType: 'selection',
           groupId: `select_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          selectionCount: selectionCount,
+          selectionCount: selectionType === 'courses' ? selectionValue : undefined,
+          selectionHours: selectionType === 'hours' ? selectionValue : undefined,
+          selectionType: selectionType,
           selectionOptions: [],
           footnoteRefs: course.footnoteRefs || []
         };
@@ -2111,16 +2217,49 @@ function enhanceWithSelectionGroups(requirements: Requirement[]): void {
       const course = requirement.courses[i];
       
       // Pattern 1: Look for "Select X of the following" patterns that weren't caught during parsing
-      if (course.title && course.title.toLowerCase().includes('select') && course.title.toLowerCase().includes('following')) {
+      // Enhanced detection for both course and hour-based selections
+      const hasSelectKeyword = course.title && course.title.toLowerCase().includes('select');
+      const hasFollowingKeyword = course.title && (course.title.toLowerCase().includes('following') || 
+                                                   course.title.toLowerCase().includes('electives') ||
+                                                   course.title.toLowerCase().includes('courses'));
+      const hasHourKeyword = course.title && /\b(hours?|credits?|hrs?)\b/i.test(course.title);
+      
+      if (hasSelectKeyword && (hasFollowingKeyword || hasHourKeyword)) {
         console.log(`  🎯 Found missed selection pattern: "${course.title}"`);
         
-        // Extract selection count from title
+        // ENHANCED: Extract selection count or hours from title with triple validation
         const countMatch = course.title.match(/select\s+(\d+|one|two|three|four|five)/i);
-        let selectionCount = 1;
-        if (countMatch) {
+        
+        // Triple validation for hour-based selections in post-processing
+        let hourMatch = null;
+        const hourPatterns = [
+          /select\s+(\d+)\s+(hours?|credits?)\s+(?:from|of)\s+/i,
+          /select\s+(\d+)\s+(hours?|credits?)/i,
+          /(\d+)\s+(hours?|credits?)/i
+        ];
+        
+        for (let i = 0; i < hourPatterns.length; i++) {
+          const match = course.title.match(hourPatterns[i]);
+          if (match) {
+            hourMatch = match;
+            console.log(`    🎯 Post-process hour selection detected with pattern ${i + 1}: "${course.title}"`);
+            break;
+          }
+        }
+        
+        let selectionValue = 1;
+        let selectionType: 'courses' | 'hours' = 'courses';
+        
+        if (hourMatch) {
+          selectionValue = parseInt(hourMatch[1]);
+          selectionType = 'hours';
+          console.log(`    ✅ Post-process hour-based selection: ${selectionValue} hours`);
+        } else if (countMatch) {
           const countText = countMatch[1].toLowerCase();
           const wordToNumber = { 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5 };
-          selectionCount = wordToNumber[countText as keyof typeof wordToNumber] || parseInt(countMatch[1]) || 1;
+          selectionValue = wordToNumber[countText as keyof typeof wordToNumber] || parseInt(countMatch[1]) || 1;
+          selectionType = 'courses';
+          console.log(`    ✅ Post-process course-based selection: ${selectionValue} courses`);
         }
         
         // Convert to selection group
@@ -2129,7 +2268,9 @@ function enhanceWithSelectionGroups(requirements: Requirement[]): void {
           title: course.title,
           courseType: 'selection',
           groupId: `select_post_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          selectionCount: selectionCount,
+          selectionCount: selectionType === 'courses' ? selectionValue : undefined,
+          selectionHours: selectionType === 'hours' ? selectionValue : undefined,
+          selectionType: selectionType,
           selectionOptions: [],
           footnoteRefs: course.footnoteRefs || []
         };
@@ -3001,13 +3142,39 @@ function createFlexibleCategory(line: string): Requirement | null {
   let course: Course;
   
   if (isSelectionBased) {
-    // Create selection group for selection-based flexible categories
+    // ENHANCED: Create selection group for selection-based flexible categories with triple validation
     const countMatch = trimmed.match(/select\s+(\d+|one|two|three|four|five)/i);
-    let selectionCount = 1;
-    if (countMatch) {
+    
+    // Triple validation for hour-based selections in flexible requirements
+    let hourMatch = null;
+    const hourPatterns = [
+      /select\s+(\d+)\s+(hours?|credits?)\s+(?:from|of)\s+/i,
+      /select\s+(\d+)\s+(hours?|credits?)/i,
+      /(\d+)\s+(hours?|credits?)/i
+    ];
+    
+    for (let i = 0; i < hourPatterns.length; i++) {
+      const match = trimmed.match(hourPatterns[i]);
+      if (match) {
+        hourMatch = match;
+        console.log(`    🎯 Flexible requirement hour selection detected with pattern ${i + 1}: "${trimmed}"`);
+        break;
+      }
+    }
+    
+    let selectionValue = 1;
+    let selectionType: 'courses' | 'hours' = 'courses';
+    
+    if (hourMatch) {
+      selectionValue = parseInt(hourMatch[1]);
+      selectionType = 'hours';
+      console.log(`    ✅ Flexible requirement hour-based selection: ${selectionValue} hours`);
+    } else if (countMatch) {
       const countText = countMatch[1].toLowerCase();
       const wordToNumber = { 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5 };
-      selectionCount = wordToNumber[countText as keyof typeof wordToNumber] || parseInt(countMatch[1]) || 1;
+      selectionValue = wordToNumber[countText as keyof typeof wordToNumber] || parseInt(countMatch[1]) || 1;
+      selectionType = 'courses';
+      console.log(`    ✅ Flexible requirement course-based selection: ${selectionValue} courses`);
     }
     
     course = {
@@ -3015,13 +3182,15 @@ function createFlexibleCategory(line: string): Requirement | null {
       title: trimmed,
       courseType: 'selection',
       groupId: `select_flexible_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      selectionCount: selectionCount,
+      selectionCount: selectionType === 'courses' ? selectionValue : undefined,
+      selectionHours: selectionType === 'hours' ? selectionValue : undefined,
+      selectionType: selectionType,
       selectionOptions: [], // Will be populated later if needed
       footnoteRefs: [],
       isFlexible: true
     };
     
-    console.log(`  ✅ Created selection-based flexible category with count ${selectionCount}`);
+    console.log(`  ✅ Created selection-based flexible category with ${selectionType}: ${selectionValue}`);
   } else {
     // Create regular flexible course
     const flexible = parseFlexibleRequirement(trimmed);
