@@ -697,7 +697,7 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
       // Regular selection option
       return (
         <div className="flex items-center gap-2 p-1 rounded border">
-          {/* Left side: Code and Title (evenly sized) */}
+          {/* Left side: Code and Title (2/3 of space) */}
           <div className="flex gap-2 flex-1">
             <StableInput
               value={option.code}
@@ -711,27 +711,30 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
               placeholder="Course title"
               className="h-6 text-xs flex-1"
             />
-            <StableInput
-              type="number"
-              value={String(option.creditHours || '')}
-              onChange={(value) => updateSelectionOption(courseIndex, optionIndex, 'creditHours', value ? parseInt(value) : undefined)}
-              placeholder="Hrs"
-              className="h-6 text-xs w-12 text-center"
-              min="0"
-              max="9"
-            />
           </div>
           
-          {/* Right side: Fixed-width controls */}
-          <FootnoteInput
-            footnoteRefs={option.footnoteRefs}
-            courseRef={{ type: 'selectionOption', courseIndex, optionIndex }}
-            className="w-40"
-          />
-          
-          <Button onClick={() => removeSelectionOption(courseIndex, optionIndex)} variant="ghost" size="sm" className="h-6 w-6 p-0">
-            <Trash2 className="h-3 w-3" />
-          </Button>
+          {/* Right side: Controls (1/3 of space) */}
+          <div className="flex gap-2 items-center">
+            {option.courseType === 'flexible' && (
+              <StableInput
+                type="number"
+                value={String(option.creditHours || '')}
+                onChange={(value) => updateSelectionOption(courseIndex, optionIndex, 'creditHours', value ? parseInt(value) : undefined)}
+                placeholder="Hrs"
+                className="h-6 text-xs w-12 text-center"
+                min="0"
+                max="18"
+              />
+            )}
+            <FootnoteInput
+              footnoteRefs={option.footnoteRefs}
+              courseRef={{ type: 'selectionOption', courseIndex, optionIndex }}
+              className="w-32"
+            />
+            <Button onClick={() => removeSelectionOption(courseIndex, optionIndex)} variant="ghost" size="sm" className="h-6 w-6 p-0">
+              <Trash2 className="h-3 w-3" />
+            </Button>
+          </div>
         </div>
       );
     }
@@ -1034,7 +1037,7 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
       ) : (
         // Regular Course - IMPROVED LAYOUT
         <div className="flex items-center gap-2">
-          {/* Left side: Code and Title (evenly sized) */}
+          {/* Left side: Code and Title (2/3 of space) */}
           <div className="flex gap-2 flex-1">
             <StableInput
               value={course.code || ''}
@@ -1048,31 +1051,35 @@ export const RequirementEditor: React.FC<RequirementEditorProps> = ({
               placeholder="Course title"
               className="h-6 text-xs flex-1"
             />
-            <StableInput
-              type="number"
-              value={String(course.creditHours || '')}
-              onChange={(value) => updateCourse(courseIndex, 'creditHours', value ? parseInt(value) : undefined)}
-              placeholder="Hrs"
-              className="h-6 text-xs w-12 text-center"
-              min="0"
-              max="9"
-            />
           </div>
           
-          {/* Right side: Fixed-width controls */}
-          <Select
-            value={course.courseType || 'regular'}
-            onValueChange={(value) => updateCourse(courseIndex, 'courseType', value)}
-          >
-            <SelectTrigger className="h-6 w-25 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="regular">Regular</SelectItem>
-              <SelectItem value="or_option">OR</SelectItem>
-              <SelectItem value="flexible">Flex</SelectItem>
-            </SelectContent>
-          </Select>
+          {/* Right side: Controls (1/3 of space) */}
+          <div className="flex gap-2 items-center">
+            {course.courseType === 'flexible' && (
+              <StableInput
+                type="number"
+                value={String(course.creditHours || '')}
+                onChange={(value) => updateCourse(courseIndex, 'creditHours', value ? parseInt(value) : undefined)}
+                placeholder="Hrs"
+                className="h-6 text-xs w-12 text-center"
+                min="0"
+                max="18"
+              />
+            )}
+            <Select
+              value={course.courseType || 'regular'}
+              onValueChange={(value) => updateCourse(courseIndex, 'courseType', value)}
+            >
+              <SelectTrigger className="h-6 w-20 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="regular">Regular</SelectItem>
+                <SelectItem value="or_option">OR</SelectItem>
+                <SelectItem value="flexible">Flex</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           
           <FootnoteInput
             footnoteRefs={course.footnoteRefs}

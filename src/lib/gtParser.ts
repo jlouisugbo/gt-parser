@@ -2804,33 +2804,52 @@ export function parseFlexibleRequirement(line: string): Course | null {
   
   console.log(`Parsing flexible requirement: "${trimmed}"`);
   
-  // Handle "Lab Science" patterns specifically 
-  const labScienceMatch = trimmed.match(/^Lab Science\s*(\d+)?$/i);
+  // Handle "Lab Science" patterns with optional footnotes and credits
+  const labScienceMatch = trimmed.match(/^Lab Science\s*(\d+)?\s*(\d+)?$/i);
   if (labScienceMatch) {
     const footnoteRef = labScienceMatch[1] ? [parseInt(labScienceMatch[1])] : [];
-    console.log(`  Lab Science pattern detected, footnote: ${footnoteRef}`);
+    const creditHours = labScienceMatch[2] ? parseInt(labScienceMatch[2]) : undefined;
+    console.log(`  Lab Science pattern detected, footnote: ${footnoteRef}, credits: ${creditHours}`);
     return {
       code: 'FLEXIBLE',
       title: 'Lab Science',
       courseType: 'flexible',
       isFlexible: true,
       isOption: false,
-      footnoteRefs: footnoteRef
+      footnoteRefs: footnoteRef,
+      creditHours: creditHours
     };
   }
 
-  // Handle "Free Electives" patterns with footnotes
+  // Handle "Free Electives" patterns with footnotes and credits
   const freeElectivesMatch = trimmed.match(/^Free Electives\s+(\d+)\s+(\d+)$/i);
   if (freeElectivesMatch) {
-    const footnoteRef = [parseInt(freeElectivesMatch[1])];
-    console.log(`  Free Electives pattern detected, footnote: ${footnoteRef}`);
+    const firstNum = parseInt(freeElectivesMatch[1]);
+    const secondNum = parseInt(freeElectivesMatch[2]);
+    
+    // Logic: If first number is small (1-20), it's likely a footnote and second is credits
+    // If first number is large (>20), it's likely credits and second might be something else
+    let footnoteRef: number[] = [];
+    let creditHours: number | undefined = undefined;
+    
+    if (firstNum <= 20 && secondNum >= 3) {
+      // First number is footnote, second is credits
+      footnoteRef = [firstNum];
+      creditHours = secondNum;
+    } else if (firstNum >= 3 && firstNum <= 18) {
+      // First number is credits, no footnote
+      creditHours = firstNum;
+    }
+    
+    console.log(`  Free Electives pattern detected, footnote: ${footnoteRef}, credits: ${creditHours}`);
     return {
       code: 'FLEXIBLE', 
       title: 'Free Electives',
       courseType: 'flexible',
       isFlexible: true,
       isOption: false,
-      footnoteRefs: footnoteRef
+      footnoteRefs: footnoteRef,
+      creditHours: creditHours
     };
   }
 
@@ -2897,11 +2916,34 @@ export function parseFlexibleRequirement(line: string): Course | null {
     };
   }
   
-  // Handle requirement lines with footnotes like "Economics Requirement 8"
-  const requirementMatch = trimmed.match(/^(.+?Requirement)\s+(\d+)$/i);
+  // Handle requirement lines with footnotes and optional credits like "Economics Requirement 8 4"
+  const requirementMatch = trimmed.match(/^(.+?Requirement)\s+(\d+)(?:\s+(\d+))?$/i);
   if (requirementMatch) {
-    const [, reqTitle, num] = requirementMatch;
-    console.log(`  Requirement: ${reqTitle} = footnote ${num}`);
+    const [, reqTitle, firstNum, secondNum] = requirementMatch;
+    const firstNumber = parseInt(firstNum);
+    const secondNumber = secondNum ? parseInt(secondNum) : undefined;
+    
+    let footnoteRef: number[] = [];
+    let creditHours: number | undefined = undefined;
+    
+    if (secondNumber) {
+      // Two numbers: apply footnote/credit logic
+      if (firstNumber <= 20 && secondNumber >= 3) {
+        footnoteRef = [firstNumber];
+        creditHours = secondNumber;
+      } else if (firstNumber >= 3 && firstNumber <= 18) {
+        creditHours = firstNumber;
+      }
+    } else {
+      // Single number: likely a footnote
+      if (firstNumber <= 20) {
+        footnoteRef = [firstNumber];
+      } else if (firstNumber >= 3 && firstNumber <= 18) {
+        creditHours = firstNumber;
+      }
+    }
+    
+    console.log(`  Requirement: ${reqTitle}, footnote: ${footnoteRef}, credits: ${creditHours}`);
     
     return {
       code: 'FLEXIBLE',
@@ -2909,15 +2951,39 @@ export function parseFlexibleRequirement(line: string): Course | null {
       courseType: 'flexible',
       isFlexible: true,
       isOption: false,
-      footnoteRefs: [parseInt(num)]
+      footnoteRefs: footnoteRef,
+      creditHours: creditHours
     };
   }
   
-  // Handle electives
-  const electivesMatch = trimmed.match(/^(.+?Electives?)\s*(\d+)?$/i);
+  // Handle electives with optional footnotes and credits
+  const electivesMatch = trimmed.match(/^(.+?Electives?)\s*(\d+)?\s*(\d+)?$/i);
   if (electivesMatch) {
-    const [, electiveType] = electivesMatch;
-    console.log(`  Electives: ${electiveType}`);
+    const [, electiveType, firstNum, secondNum] = electivesMatch;
+    const firstNumber = firstNum ? parseInt(firstNum) : undefined;
+    const secondNumber = secondNum ? parseInt(secondNum) : undefined;
+    
+    let footnoteRefs: number[] = [];
+    let creditHours: number | undefined = undefined;
+    
+    if (firstNumber && secondNumber) {
+      // Two numbers: apply footnote/credit logic
+      if (firstNumber <= 20 && secondNumber >= 3) {
+        footnoteRefs = [firstNumber];
+        creditHours = secondNumber;
+      } else if (firstNumber >= 3 && firstNumber <= 18) {
+        creditHours = firstNumber;
+      }
+    } else if (firstNumber) {
+      // Single number: likely a footnote unless it's in credit range
+      if (firstNumber <= 20) {
+        footnoteRefs = [firstNumber];
+      } else if (firstNumber >= 3 && firstNumber <= 18) {
+        creditHours = firstNumber;
+      }
+    }
+    
+    console.log(`  Electives: ${electiveType}, footnote: ${footnoteRefs}, credits: ${creditHours}`);
     
     return {
       code: 'FLEXIBLE',
@@ -2925,10 +2991,42 @@ export function parseFlexibleRequirement(line: string): Course | null {
       courseType: 'flexible',
       isFlexible: true,
       isOption: false,
-      footnoteRefs: []
+      footnoteRefs: footnoteRefs,
+      creditHours: creditHours
     };
   }
   
+  // Handle general pattern: "Title footnote credits" like "Technical Electives 8 12"
+  const generalCreditMatch = trimmed.match(/^([A-Za-z\s]+)\s+(\d+)\s+(\d+)$/);
+  if (generalCreditMatch) {
+    const [, title, firstNum, secondNum] = generalCreditMatch;
+    const firstNumber = parseInt(firstNum);
+    const secondNumber = parseInt(secondNum);
+    
+    let footnoteRefs: number[] = [];
+    let creditHours: number | undefined = undefined;
+    
+    // Apply footnote/credit logic
+    if (firstNumber <= 20 && secondNumber >= 3) {
+      footnoteRefs = [firstNumber];
+      creditHours = secondNumber;
+    } else if (firstNumber >= 3 && firstNumber <= 18) {
+      creditHours = firstNumber;
+    }
+    
+    console.log(`  General credit pattern: ${title}, footnote: ${footnoteRefs}, credits: ${creditHours}`);
+    
+    return {
+      code: 'FLEXIBLE',
+      title: title.trim(),
+      courseType: 'flexible',
+      isFlexible: true,
+      isOption: false,
+      footnoteRefs: footnoteRefs,
+      creditHours: creditHours
+    };
+  }
+
   // Handle standalone numbers
   if (/^\d+$/.test(trimmed)) {
     console.log(`  Standalone number`);
